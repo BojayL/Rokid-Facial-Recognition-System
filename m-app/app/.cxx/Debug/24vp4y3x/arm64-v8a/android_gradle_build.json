@@ -1,0 +1,50 @@
+{
+  "buildFiles": [
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/CMakeLists.txt",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/ncnn-20250503-android-vulkan/arm64-v8a/lib/cmake/glslang/glslang-config-version.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/ncnn-20250503-android-vulkan/arm64-v8a/lib/cmake/glslang/glslang-config.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/ncnn-20250503-android-vulkan/arm64-v8a/lib/cmake/glslang/glslang-targets-release.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/ncnn-20250503-android-vulkan/arm64-v8a/lib/cmake/glslang/glslang-targets.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/ncnn-20250503-android-vulkan/arm64-v8a/lib/cmake/ncnn/ncnn-release.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/ncnn-20250503-android-vulkan/arm64-v8a/lib/cmake/ncnn/ncnn.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/ncnn-20250503-android-vulkan/arm64-v8a/lib/cmake/ncnn/ncnnConfig.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/OpenCVConfig-version.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/OpenCVConfig.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/abi-arm64-v8a/OpenCVConfig.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/abi-arm64-v8a/OpenCVModules-release.cmake",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/abi-arm64-v8a/OpenCVModules.cmake"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/bojay.l/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/.cxx/Debug/24vp4y3x/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/bojay.l/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/.cxx/Debug/24vp4y3x/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "scrfd_jni::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "scrfd_jni",
+      "output": "/Users/bojay.l/Developer/Rokid/FReg/m-app/app/build/intermediates/cxx/Debug/24vp4y3x/obj/arm64-v8a/libscrfd_jni.so",
+      "runtimeFiles": []
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}

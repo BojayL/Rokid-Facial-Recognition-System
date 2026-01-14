@@ -1,0 +1,12 @@
+# ninja log v5
+760	956	1768298816856127449	/Users/bojay.l/Developer/Rokid/FReg/m-app/app/build/intermediates/cxx/Debug/24vp4y3x/obj/arm64-v8a/libscrfd_jni.so	46364f3bede0c603
+2	759	1768298816666637649	CMakeFiles/scrfd_jni.dir/scrfd_jni.cpp.o	3b476c614232528c
+0	644	1768298644798924482	CMakeFiles/scrfd_jni.dir/scrfd.cpp.o	61e0397debbbb362
+25	874	1768358193426615215	CMakeFiles/scrfd_jni.dir/scrfd_jni.cpp.o	3b476c614232528c
+25	874	1768358193427133100	CMakeFiles/scrfd_jni.dir/face_recognition_jni.cpp.o	11f7597417ba8691
+25	878	1768358193433090344	CMakeFiles/scrfd_jni.dir/mobilefacenet.cpp.o	d446144be88a3ca5
+878	1083	1768358193634379959	/Users/bojay.l/Developer/Rokid/FReg/m-app/app/build/intermediates/cxx/Debug/24vp4y3x/obj/arm64-v8a/libscrfd_jni.so	5c47415981f7d138
+2	818	1768361583024388366	CMakeFiles/scrfd_jni.dir/face_recognition_jni.cpp.o	11f7597417ba8691
+818	1060	1768361583255226450	/Users/bojay.l/Developer/Rokid/FReg/m-app/app/build/intermediates/cxx/Debug/24vp4y3x/obj/arm64-v8a/libscrfd_jni.so	5c47415981f7d138
+3	981	1768366370818668037	CMakeFiles/scrfd_jni.dir/mobilefacenet.cpp.o	d446144be88a3ca5
+981	1250	1768366371075266495	/Users/bojay.l/Developer/Rokid/FReg/m-app/app/build/intermediates/cxx/Debug/24vp4y3x/obj/arm64-v8a/libscrfd_jni.so	5c47415981f7d138
