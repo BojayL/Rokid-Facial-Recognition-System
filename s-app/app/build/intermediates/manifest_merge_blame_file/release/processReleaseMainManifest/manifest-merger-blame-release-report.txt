@@ -1,0 +1,192 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.sustech.bojayL.glasses"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="31"
+9        android:targetSdkVersion="36" />
+10
+11    <!-- 相机权限 - 用于人脸采集 -->
+12    <uses-feature
+12-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:6:5-8:36
+13        android:name="android.hardware.camera"
+13-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:7:9-47
+14        android:required="false" />
+14-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:8:9-33
+15
+16    <uses-permission android:name="android.permission.CAMERA" />
+16-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:9:5-65
+16-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:9:22-62
+17
+18    <!-- 音频权限 -->
+19    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+19-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:12:5-71
+19-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:12:22-68
+20    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+20-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:13:5-80
+20-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:13:22-77
+21
+22    <!-- 存储权限 -->
+23    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+23-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:16:5-82
+23-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:16:22-79
+24    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+24-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:17:5-81
+24-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:17:22-78
+25    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+25-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:18:5-80
+25-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:18:22-77
+26
+27    <!-- 网络权限 -->
+28    <uses-permission android:name="android.permission.INTERNET" />
+28-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:21:5-67
+28-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:21:22-64
+29    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+29-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:22:5-79
+29-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:22:22-76
+30    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+30-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:23:5-76
+30-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:23:22-73
+31
+32    <permission
+32-->[androidx.core:core:1.13.1] /Users/bojay.l/.gradle/caches/8.13/transforms/d20718bad1b65e1ef5e34fa046cfbf32/transformed/core-1.13.1/AndroidManifest.xml:22:5-24:47
+33        android:name="com.sustech.bojayL.glasses.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+33-->[androidx.core:core:1.13.1] /Users/bojay.l/.gradle/caches/8.13/transforms/d20718bad1b65e1ef5e34fa046cfbf32/transformed/core-1.13.1/AndroidManifest.xml:23:9-81
+34        android:protectionLevel="signature" />
+34-->[androidx.core:core:1.13.1] /Users/bojay.l/.gradle/caches/8.13/transforms/d20718bad1b65e1ef5e34fa046cfbf32/transformed/core-1.13.1/AndroidManifest.xml:24:9-44
+35
+36    <uses-permission android:name="com.sustech.bojayL.glasses.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+36-->[androidx.core:core:1.13.1] /Users/bojay.l/.gradle/caches/8.13/transforms/d20718bad1b65e1ef5e34fa046cfbf32/transformed/core-1.13.1/AndroidManifest.xml:26:5-97
+36-->[androidx.core:core:1.13.1] /Users/bojay.l/.gradle/caches/8.13/transforms/d20718bad1b65e1ef5e34fa046cfbf32/transformed/core-1.13.1/AndroidManifest.xml:26:22-94
+37
+38    <application
+38-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:25:5-45:19
+39        android:allowBackup="true"
+39-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:26:9-35
+40        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+40-->[androidx.core:core:1.13.1] /Users/bojay.l/.gradle/caches/8.13/transforms/d20718bad1b65e1ef5e34fa046cfbf32/transformed/core-1.13.1/AndroidManifest.xml:28:18-86
+41        android:dataExtractionRules="@xml/data_extraction_rules"
+41-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:27:9-65
+42        android:extractNativeLibs="false"
+43        android:fullBackupContent="@xml/backup_rules"
+43-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:28:9-54
+44        android:icon="@mipmap/ic_launcher"
+44-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:29:9-43
+45        android:label="@string/app_name"
+45-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:30:9-41
+46        android:roundIcon="@mipmap/ic_launcher_round"
+46-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:31:9-54
+47        android:supportsRtl="true"
+47-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:32:9-35
+48        android:theme="@style/Theme.GlassesApp" >
+48-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:33:9-48
+49        <activity
+49-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:34:9-44:20
+50            android:name="com.sustech.bojayL.glasses.MainActivity"
+50-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:35:13-41
+51            android:exported="true"
+51-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:36:13-36
+52            android:label="@string/app_name"
+52-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:37:13-45
+53            android:screenOrientation="landscape"
+53-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:38:13-50
+54            android:theme="@style/Theme.GlassesApp" >
+54-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:39:13-52
+55            <intent-filter>
+55-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:40:13-43:29
+56                <action android:name="android.intent.action.MAIN" />
+56-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:41:17-69
+56-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:41:25-66
+57
+58                <category android:name="android.intent.category.LAUNCHER" />
+58-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:42:17-77
+58-->/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/AndroidManifest.xml:42:27-74
+59            </intent-filter>
+60        </activity>
+61
+62        <service
+62-->[androidx.camera:camera-camera2:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/a48b190933a92857e076a27e8e9b5a12/transformed/camera-camera2-1.3.1/AndroidManifest.xml:24:9-33:19
+63            android:name="androidx.camera.core.impl.MetadataHolderService"
+63-->[androidx.camera:camera-camera2:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/a48b190933a92857e076a27e8e9b5a12/transformed/camera-camera2-1.3.1/AndroidManifest.xml:25:13-75
+64            android:enabled="false"
+64-->[androidx.camera:camera-camera2:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/a48b190933a92857e076a27e8e9b5a12/transformed/camera-camera2-1.3.1/AndroidManifest.xml:26:13-36
+65            android:exported="false" >
+65-->[androidx.camera:camera-camera2:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/a48b190933a92857e076a27e8e9b5a12/transformed/camera-camera2-1.3.1/AndroidManifest.xml:27:13-37
+66            <meta-data
+66-->[androidx.camera:camera-camera2:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/a48b190933a92857e076a27e8e9b5a12/transformed/camera-camera2-1.3.1/AndroidManifest.xml:30:13-32:89
+67                android:name="androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER"
+67-->[androidx.camera:camera-camera2:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/a48b190933a92857e076a27e8e9b5a12/transformed/camera-camera2-1.3.1/AndroidManifest.xml:31:17-103
+68                android:value="androidx.camera.camera2.Camera2Config$DefaultProvider" />
+68-->[androidx.camera:camera-camera2:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/a48b190933a92857e076a27e8e9b5a12/transformed/camera-camera2-1.3.1/AndroidManifest.xml:32:17-86
+69        </service>
+70
+71        <provider
+71-->[androidx.emoji2:emoji2:1.3.0] /Users/bojay.l/.gradle/caches/8.13/transforms/94b1d4046310722dfefebf7eb1b5863d/transformed/emoji2-1.3.0/AndroidManifest.xml:24:9-32:20
+72            android:name="androidx.startup.InitializationProvider"
+72-->[androidx.emoji2:emoji2:1.3.0] /Users/bojay.l/.gradle/caches/8.13/transforms/94b1d4046310722dfefebf7eb1b5863d/transformed/emoji2-1.3.0/AndroidManifest.xml:25:13-67
+73            android:authorities="com.sustech.bojayL.glasses.androidx-startup"
+73-->[androidx.emoji2:emoji2:1.3.0] /Users/bojay.l/.gradle/caches/8.13/transforms/94b1d4046310722dfefebf7eb1b5863d/transformed/emoji2-1.3.0/AndroidManifest.xml:26:13-68
+74            android:exported="false" >
+74-->[androidx.emoji2:emoji2:1.3.0] /Users/bojay.l/.gradle/caches/8.13/transforms/94b1d4046310722dfefebf7eb1b5863d/transformed/emoji2-1.3.0/AndroidManifest.xml:27:13-37
+75            <meta-data
+75-->[androidx.emoji2:emoji2:1.3.0] /Users/bojay.l/.gradle/caches/8.13/transforms/94b1d4046310722dfefebf7eb1b5863d/transformed/emoji2-1.3.0/AndroidManifest.xml:29:13-31:52
+76                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+76-->[androidx.emoji2:emoji2:1.3.0] /Users/bojay.l/.gradle/caches/8.13/transforms/94b1d4046310722dfefebf7eb1b5863d/transformed/emoji2-1.3.0/AndroidManifest.xml:30:17-75
+77                android:value="androidx.startup" />
+77-->[androidx.emoji2:emoji2:1.3.0] /Users/bojay.l/.gradle/caches/8.13/transforms/94b1d4046310722dfefebf7eb1b5863d/transformed/emoji2-1.3.0/AndroidManifest.xml:31:17-49
+78            <meta-data
+78-->[androidx.lifecycle:lifecycle-process:2.8.3] /Users/bojay.l/.gradle/caches/8.13/transforms/732c1bf1c89816bfa058676d268187d3/transformed/lifecycle-process-2.8.3/AndroidManifest.xml:29:13-31:52
+79                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+79-->[androidx.lifecycle:lifecycle-process:2.8.3] /Users/bojay.l/.gradle/caches/8.13/transforms/732c1bf1c89816bfa058676d268187d3/transformed/lifecycle-process-2.8.3/AndroidManifest.xml:30:17-78
+80                android:value="androidx.startup" />
+80-->[androidx.lifecycle:lifecycle-process:2.8.3] /Users/bojay.l/.gradle/caches/8.13/transforms/732c1bf1c89816bfa058676d268187d3/transformed/lifecycle-process-2.8.3/AndroidManifest.xml:31:17-49
+81            <meta-data
+81-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:29:13-31:52
+82                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+82-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:30:17-85
+83                android:value="androidx.startup" />
+83-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:31:17-49
+84        </provider>
+85
+86        <receiver
+86-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:34:9-52:20
+87            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+87-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:35:13-76
+88            android:directBootAware="false"
+88-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:36:13-44
+89            android:enabled="true"
+89-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:37:13-35
+90            android:exported="true"
+90-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:38:13-36
+91            android:permission="android.permission.DUMP" >
+91-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:39:13-57
+92            <intent-filter>
+92-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:40:13-42:29
+93                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+93-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:17-91
+93-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:25-88
+94            </intent-filter>
+95            <intent-filter>
+95-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:43:13-45:29
+96                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+96-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:17-85
+96-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:25-82
+97            </intent-filter>
+98            <intent-filter>
+98-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:46:13-48:29
+99                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+99-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:17-88
+99-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:25-85
+100            </intent-filter>
+101            <intent-filter>
+101-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:49:13-51:29
+102                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+102-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:17-95
+102-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/bojay.l/.gradle/caches/8.13/transforms/3ad0c2ac6b7fd39fc447cb910385937e/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:25-92
+103            </intent-filter>
+104        </receiver>
+105    </application>
+106
+107</manifest>

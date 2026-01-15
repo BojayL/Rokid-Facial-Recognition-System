@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.sustech.bojayL.glasses.app-mergeDebugResources-54:/values-v30/values-v30.xml",
+            "map": [
+                {
+                    "source": "/Users/bojay.l/.gradle/caches/8.13/transforms/e9c8d7c0ad4e1669581a0b4c10bb849f/transformed/material3-release/res/values-v30/values-v30.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "72",
+                        "endOffsets": "123"
+                    }
+                }
+            ]
+        }
+    ]
+}
