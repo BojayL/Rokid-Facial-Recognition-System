@@ -494,11 +494,26 @@ class CameraFaceDetector(
             return tracked.student
         }
         
-        val bitmap = currentBitmap
+        // 复制 bitmap 避免竞态条件（原始 bitmap 可能在识别过程中被回收）
+        val originalBitmap = currentBitmap
         val landmarks = tracked.landmarks
         
-        if (bitmap == null || landmarks == null || !FaceAlignment.isValidLandmarks(landmarks)) {
+        if (originalBitmap == null || originalBitmap.isRecycled || 
+            landmarks == null || !FaceAlignment.isValidLandmarks(landmarks)) {
             Log.w(TAG, "No valid bitmap or landmarks for recognition")
+            return null
+        }
+        
+        // 复制 bitmap 以避免被其他协程回收
+        val bitmapCopy = try {
+            originalBitmap.copy(originalBitmap.config ?: Bitmap.Config.ARGB_8888, false)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to copy bitmap", e)
+            return null
+        }
+        
+        if (bitmapCopy == null) {
+            Log.w(TAG, "Bitmap copy failed")
             return null
         }
         
@@ -506,7 +521,14 @@ class CameraFaceDetector(
         tracked.state = FaceDetectionState.RECOGNIZING
         
         // 执行识别
-        val matchResult = recognizeFace(bitmap, landmarks)
+        val matchResult = try {
+            recognizeFace(bitmapCopy, landmarks)
+        } finally {
+            // 确保复制的 bitmap 被回收
+            if (!bitmapCopy.isRecycled) {
+                bitmapCopy.recycle()
+            }
+        }
         
         return if (matchResult != null) {
             tracked.student = matchResult.student
@@ -534,12 +556,20 @@ class CameraFaceDetector(
     
     /**
      * 识别人脸
+     * 
+     * 注意：调用方必须确保传入的 bitmap 在识别过程中不会被回收
      */
     private suspend fun recognizeFace(
         bitmap: Bitmap,
         landmarks: FloatArray
     ): FaceRecognizer.MatchResult? {
         return try {
+            // 检查 bitmap 是否有效
+            if (bitmap.isRecycled) {
+                Log.w(TAG, "Bitmap already recycled before alignment")
+                return null
+            }
+            
             // 对齐人脸
             val alignedFace = FaceAlignment.alignFace(bitmap, landmarks)
             if (alignedFace == null) {
@@ -549,7 +579,9 @@ class CameraFaceDetector(
             
             // 提取特征
             val feature = FaceRecognizer.extractFeature(alignedFace)
-            alignedFace.recycle()
+            if (!alignedFace.isRecycled) {
+                alignedFace.recycle()
+            }
             
             if (feature == null) {
                 Log.w(TAG, "Feature extraction failed")

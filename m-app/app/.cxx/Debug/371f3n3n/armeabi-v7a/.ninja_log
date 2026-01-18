@@ -1,0 +1,6 @@
+# ninja log v5
+0	1317	1768386346757388587	CMakeFiles/scrfd_jni.dir/scrfd_jni.cpp.o	2b73fff7fc82a98d
+0	1322	1768386346758254194	CMakeFiles/scrfd_jni.dir/face_recognition_jni.cpp.o	ff580a298f306baa
+0	1329	1768386346779034302	CMakeFiles/scrfd_jni.dir/mobilefacenet.cpp.o	de332e0a60b8baaf
+0	1421	1768386346873701198	CMakeFiles/scrfd_jni.dir/scrfd.cpp.o	4e57a8e87ccf6287
+1421	1542	1768386346989944811	/Users/bojay.l/Developer/Rokid/FReg/m-app/app/build/intermediates/cxx/Debug/371f3n3n/obj/armeabi-v7a/libscrfd_jni.so	4a780778e830c83d

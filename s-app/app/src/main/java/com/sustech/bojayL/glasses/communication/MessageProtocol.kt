@@ -4,6 +4,7 @@ package com.sustech.bojayL.glasses.communication
  * 眼镜端与手机端通信协议
  * 
  * 消息格式使用 Rokid SDK 的 Caps 序列化
+ * 注意：SDK 没有 writeFloat()，使用 writeInt32(Float.floatToIntBits()) 代替
  */
 object MessageProtocol {
     
@@ -15,11 +16,20 @@ object MessageProtocol {
     /** 眼镜发送: 状态同步 */
     const val KEY_GLASS_STATUS = "glass_status"
     
+    /** 眼镜发送: 配对码广播 */
+    const val KEY_GLASS_PAIRING_CODE = "glass_pairing_code"
+    
     /** 手机发送: 识别结果 */
     const val KEY_PHONE_RESULT = "phone_result"
     
     /** 手机发送: 参数配置 */
     const val KEY_PHONE_CONFIG = "phone_config"
+    
+    /** 手机发送: 验证配对码 */
+    const val KEY_PHONE_VERIFY_CODE = "phone_verify_code"
+    
+    /** 配对确认 */
+    const val KEY_PAIRING_CONFIRMED = "pairing_confirmed"
     
     /** 订阅手机端消息的 Key */
     const val KEY_SUBSCRIBE_PHONE = "rk_custom_client"
@@ -48,6 +58,10 @@ object MessageProtocol {
     const val FIELD_THRESHOLD = "threshold"
     const val FIELD_INTERVAL = "interval"
     const val FIELD_BRIGHTNESS = "brightness"
+    
+    // 配对码字段
+    const val FIELD_PAIRING_CODE = "pairingCode"
+    const val FIELD_DEVICE_NAME = "deviceName"
 }
 
 /**

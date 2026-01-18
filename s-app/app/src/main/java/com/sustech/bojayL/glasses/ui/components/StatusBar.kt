@@ -20,7 +20,7 @@ import com.sustech.bojayL.glasses.ui.theme.*
  * - 🔴 录制状态（摄像头工作中）
  * - 📶 连接状态
  * - 🔋 电量
- * - 👥 当前模式
+ * - 👥 识别统计
  * 
  * 纵向布局优化：左右对称显示关键信息
  */
@@ -30,6 +30,8 @@ fun StatusBar(
     isRecording: Boolean,
     batteryLevel: Int,
     captureMode: CaptureMode,
+    recognizedCount: Int = 0,
+    captureCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -50,6 +52,12 @@ fun StatusBar(
             // 当前模式
             ModeIndicator(mode = captureMode)
         }
+        
+        // 中间：识别统计
+        RecognitionStatsIndicator(
+            recognizedCount = recognizedCount,
+            captureCount = captureCount
+        )
         
         // 右侧：连接状态 + 电量
         Row(
@@ -158,5 +166,52 @@ private fun BatteryIndicator(level: Int) {
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium
         )
+    }
+}
+
+/**
+ * 识别统计指示器
+ */
+@Composable
+private fun RecognitionStatsIndicator(
+    recognizedCount: Int,
+    captureCount: Int
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 已识别人数
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "✅",
+                fontSize = 14.sp
+            )
+            Text(
+                text = "$recognizedCount",
+                color = GlassGreen,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        // 采集次数
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "📷",
+                fontSize = 14.sp
+            )
+            Text(
+                text = "$captureCount",
+                color = GlassWhite.copy(alpha = 0.8f),
+                fontSize = 14.sp
+            )
+        }
     }
 }

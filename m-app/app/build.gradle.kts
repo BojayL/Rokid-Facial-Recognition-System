@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "com.sustech.bojayL"
-        minSdk = 26
+        minSdk = 31  // Rokid SDK 要求至少 28，与 s-app 保持一致使用 31
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -102,6 +102,11 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
     implementation(libs.kotlinx.serialization.json)
+    
+    // Rokid 手机端 SDK (用于与眼镜通信)
+    implementation("com.rokid.cxr:client-m:1.0.4") {
+        exclude(group = "com.rokid.cxr", module = "client-m-sources")
+    }
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

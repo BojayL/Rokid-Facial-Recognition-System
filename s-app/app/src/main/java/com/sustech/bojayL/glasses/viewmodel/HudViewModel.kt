@@ -22,13 +22,23 @@ data class HudUiState(
     val isConnected: Boolean = false,
     val batteryLevel: Int = 80,
     
+    // 配对状态（连接后自动配对）
+    val isPaired: Boolean = false,
+    
     // 识别状态
     val faceState: FaceState = FaceState.NONE,
     val recognitionResult: RecognitionResult? = null,
     
+    // 统计信息
+    val recognizedCount: Int = 0,      // 本次会话已识别人数
+    val captureCount: Int = 0,         // 本次会话采集次数
+    
     // 模式
     val captureMode: CaptureMode = CaptureMode.AUTO,
     val isRecording: Boolean = false,
+    
+    // 显示设置
+    val showReticle: Boolean = true,  // 是否显示准心
     
     // 提示消息
     val toastMessage: String? = null
@@ -68,6 +78,7 @@ class HudViewModel : ViewModel() {
     init {
         glassesBridge.init()
         observeBridgeState()
+        observePairingState()
     }
     
     /**
@@ -98,8 +109,32 @@ class HudViewModel : ViewModel() {
         // 监听配置变更
         viewModelScope.launch {
             glassesBridge.config.collect { config ->
-                // 可以在这里应用配置
-                Log.d(TAG, "Config updated: $config")
+                Log.d(TAG, "Config updated: showReticle=${config.showReticle}")
+                // 直接应用准心显示配置
+                val oldValue = _uiState.value.showReticle
+                _uiState.update { it.copy(showReticle = config.showReticle) }
+                if (oldValue != config.showReticle) {
+                    showToast(if (config.showReticle) "准心已开启" else "准心已关闭")
+                }
+            }
+        }
+    }
+    
+    /**
+     * 监听配对状态（连接后自动配对）
+     */
+    private fun observePairingState() {
+        viewModelScope.launch {
+            glassesBridge.isPaired.collect { paired ->
+                val wasPaired = _uiState.value.isPaired
+                _uiState.update { it.copy(isPaired = paired) }
+                if (paired) {
+                    showToast("已就绪")
+                    // 配对成功后自动开始采集（如果相机已初始化）
+                    if (!wasPaired && _isCameraInitialized.value && !_uiState.value.isRecording) {
+                        startCapture()
+                    }
+                }
             }
         }
     }
@@ -115,7 +150,9 @@ class HudViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 faceState = newState,
-                recognitionResult = result
+                recognitionResult = result,
+                // 识别成功时增加计数
+                recognizedCount = if (result.isKnown) it.recognizedCount + 1 else it.recognizedCount
             )
         }
         
@@ -145,8 +182,8 @@ class HudViewModel : ViewModel() {
                 }
             }
             KeyType.DOUBLE_CLICK -> {
-                // 双击：重置状态
-                resetState()
+                // 双击：切换准心显示
+                toggleReticle()
             }
             KeyType.LONG_PRESS -> {
                 // 长按：切换模式
@@ -176,7 +213,16 @@ class HudViewModel : ViewModel() {
      */
     fun onSwipe(direction: SwipeDirection) {
         Log.d(TAG, "Swipe: $direction")
-        // 可以用于切换显示信息页
+        // 可用于切换显示信息页等功能
+    }
+    
+    /**
+     * 切换准心显示
+     */
+    private fun toggleReticle() {
+        val newValue = !_uiState.value.showReticle
+        _uiState.update { it.copy(showReticle = newValue) }
+        showToast(if (newValue) "准心已开启" else "准心已关闭")
     }
     
     /**
@@ -201,9 +247,14 @@ class HudViewModel : ViewModel() {
         // 监听相机初始化状态
         viewModelScope.launch {
             glassesCamera?.isInitialized?.collect { initialized ->
+                val wasInitialized = _isCameraInitialized.value
                 _isCameraInitialized.value = initialized
                 if (initialized) {
                     showToast("相机已就绪")
+                    // 相机就绪后，如果已配对且未开始采集，自动开始
+                    if (!wasInitialized && _uiState.value.isPaired && !_uiState.value.isRecording) {
+                        startCapture()
+                    }
                 }
             }
         }
@@ -215,19 +266,23 @@ class HudViewModel : ViewModel() {
     private fun onImageCaptured(imageData: ByteArray, width: Int, height: Int) {
         Log.d(TAG, "Image captured: ${imageData.size} bytes, ${width}x${height}")
         
-        if (!_uiState.value.isConnected) {
-            Log.w(TAG, "Not connected, cannot send image")
+        // 直接检查 glassesBridge 的连接状态（避免竞态条件）
+        if (!glassesBridge.isConnected.value) {
+            Log.w(TAG, "Not connected (bridge.isConnected=false), cannot send image")
             return
         }
         
-        // 更新状态为识别中
+        // 更新状态为识别中，增加采集计数
         _uiState.update {
-            it.copy(faceState = FaceState.RECOGNIZING)
+            it.copy(
+                faceState = FaceState.RECOGNIZING,
+                captureCount = it.captureCount + 1
+            )
         }
         
         // 发送识别请求
+        Log.d(TAG, "Sending recognition request to phone...")
         glassesBridge.sendRecognitionRequest(imageData)
-        showToast("正在识别...")
     }
     
     /**

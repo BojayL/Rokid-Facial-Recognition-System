@@ -37,7 +37,8 @@ enum class ConnectionType {
 data class SdkParams(
     val recognitionThreshold: RecognitionThreshold = RecognitionThreshold.MEDIUM,
     val captureInterval: CaptureInterval = CaptureInterval.CONTINUOUS,
-    val displayBrightness: Int = 80  // 显示亮度 0-100
+    val displayBrightness: Int = 80,  // 显示亮度 0-100
+    val showReticle: Boolean = true   // 是否显示准心
 )
 
 /**

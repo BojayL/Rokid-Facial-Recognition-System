@@ -23,12 +23,13 @@ import com.sustech.bojayL.glasses.ui.theme.*
  * AR眼镜启动时显示，等待手机端连接
  * 设计要点：
  * - 透明背景，仅显示必要信息
- * - 居中显示配对提示
  * - 显示设备标识供手机端识别
- * - 纵向布局优化：充分利用屏幕高度
+ * - 连接后自动配对，无需配对码
  */
 @Composable
 fun PairingScreen(
+    isConnected: Boolean = false,
+    isPaired: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -43,50 +44,61 @@ fun PairingScreen(
                 .fillMaxWidth(0.85f)  // 占据 85% 宽度
                 .clip(RoundedCornerShape(20.dp))
                 .background(TransparentBlack)
-                .border(2.dp, GlassBlue, RoundedCornerShape(20.dp))
+                .border(
+                    width = 2.dp, 
+                    color = if (isPaired) GlassGreen else if (isConnected) GlassBlue else GlassBlue,
+                    shape = RoundedCornerShape(20.dp)
+                )
                 .padding(horizontal = 24.dp, vertical = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 标题 - 增大字号
+            // 标题
             Text(
                 text = "AR 智慧课堂",
                 color = GlassWhite,
-                fontSize = 32.sp,
+                fontSize = 28.sp,
                 fontWeight = FontWeight.Bold
+            )
+            
+            // 状态图标
+            Text(
+                text = when {
+                    isPaired -> "✅"
+                    isConnected -> "📲"
+                    else -> "📱"
+                },
+                fontSize = 48.sp
+            )
+            
+            // 状态提示
+            Text(
+                text = when {
+                    isPaired -> "已连接"
+                    isConnected -> "正在配对..."
+                    else -> "等待手机连接..."
+                },
+                color = if (isPaired) GlassGreen else GlassBlue,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Medium
             )
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // 状态图标 - 增大
-            Text(
-                text = "📱",
-                fontSize = 64.sp
-            )
-            
-            // 提示文字 - 增大字号
-            Text(
-                text = "等待手机连接...",
-                color = GlassBlue,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Medium
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
             // 设备信息
             DeviceInfoSection()
             
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // 操作提示 - 增大字号
-            Text(
-                text = "请在手机端打开 AR 智慧课堂\n点击「设备」→「扫描设备」",
-                color = GlassWhite.copy(alpha = 0.7f),
-                fontSize = 16.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 24.sp
-            )
+            // 操作提示
+            if (!isPaired) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "请在手机端打开 AR 智慧课堂\n点击「设备」→「扫描设备」",
+                    color = GlassWhite.copy(alpha = 0.7f),
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+            }
         }
     }
 }

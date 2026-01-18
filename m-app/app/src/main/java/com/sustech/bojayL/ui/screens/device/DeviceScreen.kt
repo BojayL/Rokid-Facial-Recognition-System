@@ -3,7 +3,10 @@ package com.sustech.bojayL.ui.screens.device
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -17,11 +20,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.sustech.bojayL.data.model.*
+import com.sustech.bojayL.rokid.*
 import com.sustech.bojayL.ui.components.*
 import com.sustech.bojayL.ui.theme.*
 
@@ -31,12 +39,27 @@ import com.sustech.bojayL.ui.theme.*
  * 根据 PRD 要求：
  * - DEV-01: 连接状态监测
  * - DEV-02: 二维码配对生成
+ * - DEV-03: 配对码输入
  * - DEV-04: 参数配置面板
+ * - 调试：眼镜实时画面预览
  */
 @Composable
 fun DeviceScreen(
     deviceState: DeviceState,
     onUpdateParams: (SdkParams) -> Unit = {},
+    // Rokid 蓝牙连接相关
+    rokidConnectionState: RokidConnectionState = RokidConnectionState(),
+    scannedDevices: List<ScannedDevice> = emptyList(),
+    isScanning: Boolean = false,
+    onStartScan: () -> Unit = {},
+    onStopScan: () -> Unit = {},
+    onConnectDevice: (ScannedDevice) -> Unit = {},
+    onDisconnect: () -> Unit = {},
+    // 连接后自动配对
+    isPaired: Boolean = false,
+    // 调试预览：眼镜相机画面
+    latestGlassesFrame: Bitmap? = null,
+    latestFrameTimestamp: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     var qrBrightness by remember { mutableFloatStateOf(1f) }
@@ -58,12 +81,30 @@ fun DeviceScreen(
         Spacer(modifier = Modifier.height(16.dp))
         
         // 连接状态卡片
-        DeviceConnectionCard(deviceState = deviceState)
+        DeviceConnectionCard(
+            deviceState = deviceState,
+            rokidConnectionState = rokidConnectionState,
+            isPaired = isPaired,
+            onDisconnect = onDisconnect
+        )
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // 二维码配对区域（仅未连接时显示）
-        if (deviceState.connectionType == ConnectionType.DISCONNECTED) {
+        // 蓝牙扫描连接区域（仅未连接时显示）
+        if (deviceState.connectionType == ConnectionType.DISCONNECTED && 
+            rokidConnectionState.status != ConnectionStatus.CONNECTED) {
+            BluetoothScanCard(
+                scannedDevices = scannedDevices,
+                isScanning = isScanning,
+                connectionState = rokidConnectionState,
+                onStartScan = onStartScan,
+                onStopScan = onStopScan,
+                onConnectDevice = onConnectDevice
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 二维码配对区域
             QRCodePairingCard(
                 brightness = qrBrightness,
                 onBrightnessChange = { qrBrightness = it }
@@ -72,8 +113,16 @@ fun DeviceScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
         
-        // SDK 参数配置
-        if (deviceState.connectionType != ConnectionType.DISCONNECTED) {
+        // SDK 参数配置（已连接时显示）
+        if (isPaired || deviceState.connectionType != ConnectionType.DISCONNECTED) {
+            // 眼镜画面预览（调试用）
+            GlassesPreviewCard(
+                latestFrame = latestGlassesFrame,
+                frameTimestamp = latestFrameTimestamp
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
             SdkParamsCard(
                 params = deviceState.sdkParams,
                 onUpdateParams = onUpdateParams
@@ -95,8 +144,16 @@ fun DeviceScreen(
 @Composable
 private fun DeviceConnectionCard(
     deviceState: DeviceState,
+    rokidConnectionState: RokidConnectionState = RokidConnectionState(),
+    isPaired: Boolean = false,
+    onDisconnect: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    // 判断是否已连接（原有连接或 Rokid 蓝牙连接）
+    val isConnected = deviceState.connectionType != ConnectionType.DISCONNECTED || 
+                      rokidConnectionState.status == ConnectionStatus.CONNECTED
+    val isRokidConnected = rokidConnectionState.status == ConnectionStatus.CONNECTED
+    
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -114,64 +171,295 @@ private fun DeviceConnectionCard(
                     .size(64.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(
-                        if (deviceState.connectionType != ConnectionType.DISCONNECTED)
-                            StatusConnected.copy(alpha = 0.2f)
-                        else StatusDisconnected.copy(alpha = 0.2f)
+                        when {
+                            isConnected -> StatusConnected.copy(alpha = 0.2f)
+                            rokidConnectionState.status == ConnectionStatus.CONNECTING -> CyanPrimary.copy(alpha = 0.2f)
+                            else -> StatusDisconnected.copy(alpha = 0.2f)
+                        }
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = when (deviceState.connectionType) {
-                        ConnectionType.USB -> Icons.Default.Usb
-                        ConnectionType.BLUETOOTH -> Icons.Default.Bluetooth
-                        ConnectionType.WIFI -> Icons.Default.Wifi
-                        ConnectionType.DISCONNECTED -> Icons.Default.LinkOff
-                    },
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = if (deviceState.connectionType != ConnectionType.DISCONNECTED)
-                        StatusConnected else StatusDisconnected
-                )
+                if (rokidConnectionState.status == ConnectionStatus.CONNECTING) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = CyanPrimary,
+                        strokeWidth = 3.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = when {
+                            isRokidConnected -> Icons.Default.Bluetooth
+                            deviceState.connectionType == ConnectionType.USB -> Icons.Default.Usb
+                            deviceState.connectionType == ConnectionType.BLUETOOTH -> Icons.Default.Bluetooth
+                            deviceState.connectionType == ConnectionType.WIFI -> Icons.Default.Wifi
+                            else -> Icons.Default.LinkOff
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = if (isConnected) StatusConnected else StatusDisconnected
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.width(16.dp))
             
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = when (deviceState.connectionType) {
-                        ConnectionType.DISCONNECTED -> "未连接设备"
-                        ConnectionType.USB -> "USB 已连接"
-                        ConnectionType.BLUETOOTH -> "蓝牙已连接"
-                        ConnectionType.WIFI -> "WiFi 已连接"
+                    text = when {
+                        rokidConnectionState.status == ConnectionStatus.CONNECTING -> "正在连接..."
+                        isPaired -> "已连接"
+                        deviceState.connectionType == ConnectionType.USB -> "USB 已连接"
+                        deviceState.connectionType == ConnectionType.BLUETOOTH -> "蓝牙已连接"
+                        deviceState.connectionType == ConnectionType.WIFI -> "WiFi 已连接"
+                        else -> "未连接设备"
                     },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isPaired) StatusConnected else TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                when {
+                    isPaired -> {
+                        Text(
+                            text = "Rokid AR 眼镜已就绪",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = StatusConnected
+                        )
+                    }
+                    isConnected -> {
+                        Text(
+                            text = deviceState.deviceName ?: "Rokid AR 眼镜",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
+                    rokidConnectionState.status == ConnectionStatus.ERROR -> {
+                        Text(
+                            text = "连接失败: ${rokidConnectionState.errorMessage ?: "未知错误"}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = StatusDisconnected
+                        )
+                    }
+                    else -> {
+                        Text(
+                            text = "请扫描蓝牙设备或使用二维码配对",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextTertiary
+                        )
+                    }
+                }
+            }
+            
+            // 电量显示或断开按钮
+            if (isConnected) {
+                Column(
+                    horizontalAlignment = Alignment.End
+                ) {
+                    BatteryIndicator(
+                        batteryLevel = if (isRokidConnected) rokidConnectionState.batteryLevel else deviceState.batteryLevel,
+                        isCharging = deviceState.isCharging
+                    )
+                    if (isRokidConnected) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(
+                            onClick = onDisconnect,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = StatusDisconnected
+                            )
+                        ) {
+                            Text("断开")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 蓝牙扫描连接卡片
+ */
+@Composable
+private fun BluetoothScanCard(
+    scannedDevices: List<ScannedDevice>,
+    isScanning: Boolean,
+    connectionState: RokidConnectionState,
+    onStartScan: () -> Unit,
+    onStopScan: () -> Unit,
+    onConnectDevice: (ScannedDevice) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "蓝牙连接",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
                     fontWeight = FontWeight.Bold
                 )
                 
-                if (deviceState.connectionType != ConnectionType.DISCONNECTED) {
-                    Text(
-                        text = deviceState.deviceName ?: "Rokid AR 眼镜",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                // 扫描按钮
+                Button(
+                    onClick = if (isScanning) onStopScan else onStartScan,
+                    enabled = connectionState.status != ConnectionStatus.CONNECTING,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isScanning) StatusDisconnected else CyanPrimary
                     )
-                } else {
-                    Text(
-                        text = "请使用二维码配对连接",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextTertiary
-                    )
+                ) {
+                    if (isScanning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = TextPrimary,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("停止扫描")
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.BluetoothSearching,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("扫描设备")
+                    }
                 }
             }
             
-            // 电量显示
-            if (deviceState.connectionType != ConnectionType.DISCONNECTED) {
-                BatteryIndicator(
-                    batteryLevel = deviceState.batteryLevel,
-                    isCharging = deviceState.isCharging
-                )
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            if (scannedDevices.isEmpty()) {
+                // 空状态
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bluetooth,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = TextTertiary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (isScanning) "正在扫描 Rokid 设备..." else "点击“扫描设备”开始搜索",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextTertiary
+                        )
+                    }
+                }
+            } else {
+                // 设备列表
+                Column {
+                    scannedDevices.forEach { device ->
+                        ScannedDeviceItem(
+                            device = device,
+                            isConnecting = connectionState.status == ConnectionStatus.CONNECTING,
+                            onClick = { onConnectDevice(device) }
+                        )
+                        if (device != scannedDevices.last()) {
+                            HorizontalDivider(
+                                color = TextTertiary.copy(alpha = 0.2f),
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/**
+ * 扫描到的设备项
+ */
+@Composable
+private fun ScannedDeviceItem(
+    device: ScannedDevice,
+    isConnecting: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = !isConnecting, onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 蓝牙图标
+        Icon(
+            imageVector = Icons.Default.Bluetooth,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = CyanPrimary
+        )
+        
+        Spacer(modifier = Modifier.width(12.dp))
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = device.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextPrimary,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = device.address,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+        }
+        
+        // 信号强度
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.SignalCellularAlt,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = when {
+                    device.rssi > -50 -> StatusConnected
+                    device.rssi > -70 -> CyanPrimary
+                    else -> TextSecondary
+                }
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "${device.rssi} dBm",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+        }
+        
+        Spacer(modifier = Modifier.width(8.dp))
+        
+        // 连接按钮
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = "连接",
+            tint = TextSecondary
+        )
     }
 }
 
@@ -455,6 +743,38 @@ private fun SdkParamsCard(
                     activeTrackColor = CyanPrimary
                 )
             )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 准心开关
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "显示准心",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = "屏幕中央的对焦辅助点",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextTertiary
+                    )
+                }
+                Switch(
+                    checked = params.showReticle,
+                    onCheckedChange = {
+                        onUpdateParams(params.copy(showReticle = it))
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = CyanPrimary,
+                        checkedTrackColor = CyanPrimary.copy(alpha = 0.5f)
+                    )
+                )
+            }
         }
     }
 }
