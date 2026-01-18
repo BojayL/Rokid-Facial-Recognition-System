@@ -270,11 +270,9 @@ writeInt32(java.lang.Float.floatToIntBits(floatValue))
 | `docs/` | PRD、UI 设计等文档 |
 | `Rokid SDK DEMO/` | SDK 示例代码参考 |
 
-## 许可证
 
-本项目仅供学术研究使用。
 
-## 致谢
+## 使用到的库
 
 - [NCNN](https://github.com/Tencent/ncnn) - 高性能神经网络推理框架
 - [InsightFace](https://github.com/deepinsight/insightface) - SCRFD 人脸检测模型
