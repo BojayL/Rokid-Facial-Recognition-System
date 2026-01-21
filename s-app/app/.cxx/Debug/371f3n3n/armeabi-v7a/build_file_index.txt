@@ -1,0 +1,13 @@
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/CMakeLists.txt
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/ncnn-20250503-android-vulkan/armeabi-v7a/lib/cmake/glslang/glslang-config-version.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/ncnn-20250503-android-vulkan/armeabi-v7a/lib/cmake/glslang/glslang-config.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/ncnn-20250503-android-vulkan/armeabi-v7a/lib/cmake/glslang/glslang-targets-release.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/ncnn-20250503-android-vulkan/armeabi-v7a/lib/cmake/glslang/glslang-targets.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/ncnn-20250503-android-vulkan/armeabi-v7a/lib/cmake/ncnn/ncnn-release.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/ncnn-20250503-android-vulkan/armeabi-v7a/lib/cmake/ncnn/ncnn.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/ncnn-20250503-android-vulkan/armeabi-v7a/lib/cmake/ncnn/ncnnConfig.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/OpenCVConfig-version.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/OpenCVConfig.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/abi-armeabi-v7a/OpenCVConfig.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/abi-armeabi-v7a/OpenCVModules-release.cmake
+/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/abi-armeabi-v7a/OpenCVModules.cmake

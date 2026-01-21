@@ -1,0 +1,12 @@
+[
+{
+  "directory": "/Users/bojay.l/Developer/Rokid/FReg/s-app/app/.cxx/Debug/371f3n3n/armeabi-v7a",
+  "command": "/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++ --target=armv7-none-linux-androideabi31 --sysroot=/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -Dscrfd_glasses_jni_EXPORTS -I/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni -isystem /Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/ncnn-20250503-android-vulkan/armeabi-v7a/include/ncnn -isystem /Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/include -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -march=armv7-a -mthumb -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -fno-rtti -fno-exceptions -pthread -o CMakeFiles/scrfd_glasses_jni.dir/scrfd_jni.cpp.o -c /Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/scrfd_jni.cpp",
+  "file": "/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/scrfd_jni.cpp"
+},
+{
+  "directory": "/Users/bojay.l/Developer/Rokid/FReg/s-app/app/.cxx/Debug/371f3n3n/armeabi-v7a",
+  "command": "/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++ --target=armv7-none-linux-androideabi31 --sysroot=/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -Dscrfd_glasses_jni_EXPORTS -I/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni -isystem /Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/ncnn-20250503-android-vulkan/armeabi-v7a/include/ncnn -isystem /Users/bojay.l/Developer/Rokid/FReg/m-app/app/src/main/jni/opencv-mobile-4.12.0-android/sdk/native/jni/include -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -march=armv7-a -mthumb -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -fno-rtti -fno-exceptions -pthread -o CMakeFiles/scrfd_glasses_jni.dir/scrfd.cpp.o -c /Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/scrfd.cpp",
+  "file": "/Users/bojay.l/Developer/Rokid/FReg/s-app/app/src/main/jni/scrfd.cpp"
+}
+]

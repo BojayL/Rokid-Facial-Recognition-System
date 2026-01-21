@@ -72,15 +72,22 @@ class ClassroomViewModel : ViewModel() {
                     recognizedCount = 0,
                     attendanceStats = AttendanceStats()
                 ),
-                recognitionResults = emptyList()
+                recognitionResults = emptyList(),
+                recognizedStudentIds = emptySet()  // 清空已识别学生集合
             )
         }
+        
+        // 清空去重集合
+        recentlyRecognizedStudents.clear()
+        recognitionTimestamps.clear()
+        
+        Log.d(TAG, "Session started: $sessionId")
         
         // TODO: 通过 WebSocket 推送 Session ID 给眼镜
         // websocketService.sendSessionStart(sessionId)
         
-        // 模拟识别结果（实际应从 WebSocket 接收）
-        simulateRecognitionResults()
+        // 注意：移除模拟识别结果，实际应从眼镜或手机相机接收
+        // simulateRecognitionResults()
     }
     
     /**
@@ -145,6 +152,14 @@ class ClassroomViewModel : ViewModel() {
      * 接收识别结果（从 WebSocket）
      */
     fun onRecognitionResult(result: RecognitionResult) {
+        val studentId = result.studentId ?: return
+        
+        // 去重：检查该学生是否已经签到过
+        if (_uiState.value.recognizedStudentIds.contains(studentId)) {
+            Log.d(TAG, "Student $studentId already recognized in this session, skipping")
+            return
+        }
+        
         _uiState.update { state ->
             // 将旧的高亮状态移除
             val updatedResults = state.recognitionResults.map { 
@@ -156,61 +171,24 @@ class ClassroomViewModel : ViewModel() {
             
             state.copy(
                 recognitionResults = listOf(newResult) + updatedResults,
+                recognizedStudentIds = state.recognizedStudentIds + studentId,
                 session = state.session.copy(
-                    recognizedCount = (updatedResults.size + 1).coerceAtMost(state.session.totalStudents)
+                    recognizedCount = (state.recognizedStudentIds.size + 1).coerceAtMost(state.session.totalStudents)
                 )
             )
         }
+        
+        Log.d(TAG, "Recognition result added: studentId=$studentId, total recognized=${_uiState.value.recognizedStudentIds.size}")
     }
     
     /**
      * 模拟识别结果（用于开发测试）
+     * 注意：此方法已废弃，实际识别应通过眼镜或手机相机
      */
+    @Deprecated("Use real recognition from glasses or phone camera")
     private fun simulateRecognitionResults() {
-        viewModelScope.launch {
-            // 模拟学生数据
-            val mockStudents = listOf(
-                Student(
-                    id = "s1", studentId = "2021001", name = "张三",
-                    className = "高三(2)班", grade = "高三"
-                ),
-                Student(
-                    id = "s2", studentId = "2021002", name = "李四",
-                    className = "高三(2)班", grade = "高三"
-                ),
-                Student(
-                    id = "s3", studentId = "2021003", name = "王五",
-                    className = "高三(2)班", grade = "高三"
-                ),
-                Student(
-                    id = "s4", studentId = "2021004", name = "赵六",
-                    className = "高三(2)班", grade = "高三"
-                ),
-                Student(
-                    id = "s5", studentId = "2021005", name = "钱七",
-                    className = "高三(2)班", grade = "高三"
-                )
-            )
-            
-            // 逐个添加模拟识别结果
-            mockStudents.forEachIndexed { index, student ->
-                kotlinx.coroutines.delay(1500L) // 模拟间隔
-                
-                if (_uiState.value.session.status == SessionStatus.ACTIVE) {
-                    val result = RecognitionResult(
-                        id = UUID.randomUUID().toString(),
-                        studentId = student.id,
-                        student = student,
-                        sessionId = _uiState.value.session.sessionId,
-                        status = RecognitionStatus.SUCCESS,
-                        confidence = 0.95f,
-                        timestamp = System.currentTimeMillis(),
-                        attendanceStatus = if (index == 2) AttendanceStatus.LATE else AttendanceStatus.PRESENT
-                    )
-                    onRecognitionResult(result)
-                }
-            }
-        }
+        // 此方法已禁用，避免自动模拟签到
+        Log.d(TAG, "simulateRecognitionResults is deprecated and disabled")
     }
     
     // ========== 手机相机模式相关方法 ==========

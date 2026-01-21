@@ -23,17 +23,8 @@ class StudentRepository(private val context: Context) {
         private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "students")
         private val STUDENTS_KEY = stringPreferencesKey("students_list")
         
-        // 默认学生列表
-        val defaultStudents = listOf(
-            Student(id = "s1", studentId = "2021001", name = "张三", className = "高三(2)班", grade = "高三", isEnrolled = true),
-            Student(id = "s2", studentId = "2021002", name = "李四", className = "高三(2)班", grade = "高三", isEnrolled = true),
-            Student(id = "s3", studentId = "2021003", name = "王五", className = "高三(2)班", grade = "高三", isEnrolled = false),
-            Student(id = "s4", studentId = "2021004", name = "赵六", className = "高三(2)班", grade = "高三", isEnrolled = true),
-            Student(id = "s5", studentId = "2021005", name = "钱七", className = "高三(2)班", grade = "高三", isEnrolled = false),
-            Student(id = "s6", studentId = "2021006", name = "孙八", className = "高三(2)班", grade = "高三", isEnrolled = true),
-            Student(id = "s7", studentId = "2021007", name = "周九", className = "高三(2)班", grade = "高三", isEnrolled = true),
-            Student(id = "s8", studentId = "2021008", name = "吴十", className = "高三(2)班", grade = "高三", isEnrolled = false)
-        )
+        // 默认学生列表（移除占位人员）
+        val defaultStudents = emptyList<Student>()
     }
     
     private val json = Json { 

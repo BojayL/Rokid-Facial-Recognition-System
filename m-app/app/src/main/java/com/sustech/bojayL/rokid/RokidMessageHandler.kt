@@ -179,6 +179,12 @@ class RokidMessageHandler {
     
     /**
      * 解析识别请求
+     * 
+     * 消息格式：
+     * - caps[0]: String - 图片 Base64 编码
+     * - caps[1]: Long - 时间戳
+     * - caps[2]: Int - 是否有关键点 (1=有，0=无)
+     * - caps[3-12]: Int - 关键点坐标 (floatToIntBits 编码)
      */
     private fun parseRecognitionRequest(caps: Caps) {
         try {
@@ -193,12 +199,31 @@ class RokidMessageHandler {
                 return
             }
             
-            // 时间戳（尝试多种方式读取）
+            // 时间戳
             val timestamp = try {
                 if (caps.size() > 1) caps.at(1).long else System.currentTimeMillis()
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to read timestamp as long, using current time", e)
                 System.currentTimeMillis()
+            }
+            
+            // 解析关键点
+            var landmarks: FloatArray? = null
+            try {
+                if (caps.size() > 2) {
+                    val hasLandmarks = caps.at(2).int == 1
+                    if (hasLandmarks && caps.size() >= 13) {  // 3 + 10 个关键点坐标
+                        landmarks = FloatArray(10)
+                        for (i in 0 until 10) {
+                            val intBits = caps.at(3 + i).int
+                            landmarks[i] = java.lang.Float.intBitsToFloat(intBits)
+                        }
+                        Log.d(TAG, "Parsed landmarks: [${landmarks.take(4).joinToString()}...]")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse landmarks", e)
+                landmarks = null
             }
             
             // 解码图片
@@ -210,12 +235,14 @@ class RokidMessageHandler {
             if (bitmap != null) {
                 val request = RecognitionRequest(
                     bitmap = bitmap,
-                    timestamp = timestamp
+                    timestamp = timestamp,
+                    landmarks = landmarks
                 )
                 
                 // 发送到流
                 val emitResult = _recognitionRequests.tryEmit(request)
-                Log.d(TAG, "Parsed recognition request, image size: ${bitmap.width}x${bitmap.height}, emit result: $emitResult")
+                Log.d(TAG, "Parsed recognition request, image size: ${bitmap.width}x${bitmap.height}, " +
+                        "hasLandmarks=${landmarks != null}, emit result: $emitResult")
             } else {
                 Log.e(TAG, "Failed to decode image from ${imageData.size} bytes")
             }
@@ -319,11 +346,30 @@ data class PairingConfirmation(
 
 /**
  * 识别请求数据
+ * 
+ * @param bitmap 图像（裁切后的人脸或全图）
+ * @param timestamp 时间戳
+ * @param landmarks 人脸关键点 [x1,y1,...,x5,y5]，如果是全图则为 null
  */
 data class RecognitionRequest(
     val bitmap: Bitmap,
-    val timestamp: Long
-)
+    val timestamp: Long,
+    val landmarks: FloatArray? = null
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is RecognitionRequest) return false
+        return bitmap == other.bitmap && timestamp == other.timestamp &&
+                landmarks.contentEquals(other.landmarks)
+    }
+    
+    override fun hashCode(): Int {
+        var result = bitmap.hashCode()
+        result = 31 * result + timestamp.hashCode()
+        result = 31 * result + (landmarks?.contentHashCode() ?: 0)
+        return result
+    }
+}
 
 /**
  * 眼镜状态数据

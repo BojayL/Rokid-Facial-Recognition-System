@@ -1,0 +1,4 @@
+# ninja log v5
+0	548	1769004909113457756	CMakeFiles/scrfd_glasses_jni.dir/scrfd_jni.cpp.o	32d5a7624045ab94
+1	705	1769004909266464341	CMakeFiles/scrfd_glasses_jni.dir/scrfd.cpp.o	771c73389d3c1379
+705	902	1769004909461260509	/Users/bojay.l/Developer/Rokid/FReg/s-app/app/build/intermediates/cxx/Debug/371f3n3n/obj/arm64-v8a/libscrfd_glasses_jni.so	56456c6cf5852e65

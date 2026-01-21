@@ -1,4 +1,4 @@
-#Thu Jan 15 21:36:58 CST 2026
+#Wed Jan 21 22:17:22 CST 2026
 base.0=/Users/bojay.l/Developer/Rokid/FReg/s-app/app/build/intermediates/dex/debug/mergeExtDexDebug/classes.dex
 base.1=/Users/bojay.l/Developer/Rokid/FReg/s-app/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
 base.2=/Users/bojay.l/Developer/Rokid/FReg/s-app/app/build/intermediates/dex/debug/mergeProjectDexDebug/12/classes.dex

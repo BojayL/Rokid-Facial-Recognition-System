@@ -74,6 +74,7 @@ class GlassesBridge {
         }
     }
     
+    
     // 消息回调
     private val msgCallback = object : CXRServiceBridge.MsgCallback {
         override fun onReceive(name: String?, args: Caps?, bytes: ByteArray?) {
@@ -114,7 +115,7 @@ class GlassesBridge {
         
         cxrServiceBridge.setStatusListener(statusListener)
         
-        // 预先订阅一次（某些情况下可能已经连接）
+        // 订阅手机端消息
         subscribePhoneMessages()
         
         Log.d(TAG, "GlassesBridge initialized, waiting for connection")
@@ -211,11 +212,12 @@ class GlassesBridge {
     /**
      * 发送识别请求
      * 
-     * @param imageData 图片数据 (JPEG/WebP)
-     * @param faceRect 人脸区域 [x, y, width, height]
+     * @param imageData 图片数据 (JPEG)
+     * @param landmarks 人脸关键点 [x1,y1,...,x5,y5]，如果是全图则为 null
      */
-    fun sendRecognitionRequest(imageData: ByteArray, faceRect: FloatArray? = null) {
-        Log.d(TAG, "sendRecognitionRequest called, imageData size=${imageData.size}, isConnected=${_isConnected.value}")
+    fun sendRecognitionRequest(imageData: ByteArray, landmarks: FloatArray? = null) {
+        Log.d(TAG, "sendRecognitionRequest called, imageData size=${imageData.size}, " +
+                "hasLandmarks=${landmarks != null}, isConnected=${_isConnected.value}")
         
         if (!_isConnected.value) {
             Log.w(TAG, "Not connected, cannot send recognition request")
@@ -232,14 +234,13 @@ class GlassesBridge {
                 write(base64Image)
                 // 时间戳（使用 Int64）
                 writeInt64(System.currentTimeMillis())
-                // 人脸区域 (可选)
-                if (faceRect != null && faceRect.size == 4) {
-                    write(Caps().apply {
-                        writeInt32(java.lang.Float.floatToIntBits(faceRect[0]))
-                        writeInt32(java.lang.Float.floatToIntBits(faceRect[1]))
-                        writeInt32(java.lang.Float.floatToIntBits(faceRect[2]))
-                        writeInt32(java.lang.Float.floatToIntBits(faceRect[3]))
-                    })
+                // 是否有关键点（1=有，0=无/全图）
+                writeInt32(if (landmarks != null) 1 else 0)
+                // 关键点坐标（如果有）
+                if (landmarks != null && landmarks.size == 10) {
+                    for (value in landmarks) {
+                        writeInt32(java.lang.Float.floatToIntBits(value))
+                    }
                 }
             }
             

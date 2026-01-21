@@ -32,7 +32,7 @@ enum class ConnectionType {
  * SDK 参数配置
  * 
  * 根据 PRD 要求 DEV-04：
- * 允许调节 SDK 参数并实时下发给眼镜
+ * 允许调节 SDK 参数并实时下发给眼镜，
  */
 data class SdkParams(
     val recognitionThreshold: RecognitionThreshold = RecognitionThreshold.MEDIUM,

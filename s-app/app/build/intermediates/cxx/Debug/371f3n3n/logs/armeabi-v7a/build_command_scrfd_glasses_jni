@@ -1,0 +1,4 @@
+/Users/bojay.l/Library/Android/sdk/cmake/3.22.1/bin/ninja \
+  -C \
+  /Users/bojay.l/Developer/Rokid/FReg/s-app/app/.cxx/Debug/371f3n3n/armeabi-v7a \
+  scrfd_glasses_jni

@@ -40,6 +40,7 @@ object MessageProtocol {
     const val FIELD_IMAGE_BASE64 = "imageBase64"
     const val FIELD_TIMESTAMP = "timestamp"
     const val FIELD_FACE_RECT = "faceRect"  // x,y,w,h
+    const val FIELD_LANDMARKS = "landmarks"  // 人脸关键点 [x1,y1,...,x5,y5]
     
     // 识别结果字段
     const val FIELD_STUDENT_ID = "studentId"

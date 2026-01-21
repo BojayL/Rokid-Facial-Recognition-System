@@ -226,7 +226,7 @@ class HudViewModel : ViewModel() {
     }
     
     /**
-     * 初始化相机
+     * 初始化相机和人脸检测器
      * 
      * @param context Android 上下文
      * @param lifecycleOwner 生命周期所有者
@@ -237,10 +237,10 @@ class HudViewModel : ViewModel() {
             return
         }
         
-        Log.d(TAG, "Initializing camera...")
+        Log.d(TAG, "Initializing camera and face detector...")
         glassesCamera = GlassesCamera(context).apply {
-            initialize(lifecycleOwner) { imageData, width, height ->
-                onImageCaptured(imageData, width, height)
+            initialize(lifecycleOwner) { imageData, width, height, landmarks ->
+                onImageCaptured(imageData, width, height, landmarks)
             }
         }
         
@@ -262,9 +262,15 @@ class HudViewModel : ViewModel() {
     
     /**
      * 处理采集到的图像
+     * 
+     * @param imageData 图像数据（裁切后的人脸或降级全图）
+     * @param width 图像宽度
+     * @param height 图像高度
+     * @param landmarks 人脸关键点（如果检测到人脸），null 表示是降级全图
      */
-    private fun onImageCaptured(imageData: ByteArray, width: Int, height: Int) {
-        Log.d(TAG, "Image captured: ${imageData.size} bytes, ${width}x${height}")
+    private fun onImageCaptured(imageData: ByteArray, width: Int, height: Int, landmarks: FloatArray?) {
+        Log.d(TAG, "Image captured: ${imageData.size} bytes, ${width}x${height}, " +
+                "hasLandmarks=${landmarks != null}")
         
         // 直接检查 glassesBridge 的连接状态（避免竞态条件）
         if (!glassesBridge.isConnected.value) {
@@ -280,9 +286,9 @@ class HudViewModel : ViewModel() {
             )
         }
         
-        // 发送识别请求
+        // 发送识别请求（包含关键点）
         Log.d(TAG, "Sending recognition request to phone...")
-        glassesBridge.sendRecognitionRequest(imageData)
+        glassesBridge.sendRecognitionRequest(imageData, landmarks)
     }
     
     /**

@@ -79,10 +79,11 @@ class RecognitionProcessor(private val context: Context) {
     /**
      * 处理识别请求
      * 
-     * @param bitmap 输入图像
+     * @param bitmap 输入图像（可能是裁切后的人脸或全图）
+     * @param landmarks 人脸关键点，如果为 null 则需要进行检测
      * @return 识别结果
      */
-    suspend fun process(bitmap: Bitmap): ProcessResult = withContext(Dispatchers.IO) {
+    suspend fun process(bitmap: Bitmap, landmarks: FloatArray? = null): ProcessResult = withContext(Dispatchers.IO) {
         if (!isInitialized) {
             Log.w(TAG, "Not initialized")
             return@withContext ProcessResult(
@@ -105,38 +106,48 @@ class RecognitionProcessor(private val context: Context) {
         }
         
         try {
-            Log.d(TAG, "Processing image: ${bitmap.width}x${bitmap.height}")
+            Log.d(TAG, "Processing image: ${bitmap.width}x${bitmap.height}, hasLandmarks=${landmarks != null}")
             
-            // 1. 人脸检测（Bitmap）
-            val detectionResults = faceDetector.detectFromBitmap(bitmap)
+            // 确定用于对齐的关键点
+            val alignmentLandmarks: FloatArray
             
-            if (detectionResults.isNullOrEmpty()) {
-                Log.d(TAG, "No face detected")
-                return@withContext ProcessResult(
-                    isKnown = false,
-                    student = null,
-                    confidence = 0f,
-                    errorMessage = "未检测到人脸"
-                )
+            if (landmarks != null && landmarks.size == 10) {
+                // 使用眼镜端传过来的关键点，跳过检测
+                Log.d(TAG, "Using provided landmarks from glasses")
+                alignmentLandmarks = landmarks
+            } else {
+                // 需要进行人脸检测（降级模式或旧版协议）
+                Log.d(TAG, "No landmarks provided, performing face detection")
+                
+                val detectionResults = faceDetector.detectFromBitmap(bitmap)
+                
+                if (detectionResults.isNullOrEmpty()) {
+                    Log.d(TAG, "No face detected")
+                    return@withContext ProcessResult(
+                        isKnown = false,
+                        student = null,
+                        confidence = 0f,
+                        errorMessage = "未检测到人脸"
+                    )
+                }
+                
+                val bestFace = detectionResults.maxByOrNull { it.confidence }!!
+                Log.d(TAG, "Face detected: confidence=${bestFace.confidence}")
+                
+                if (bestFace.landmarks == null || bestFace.landmarks.isEmpty()) {
+                    Log.w(TAG, "No landmarks detected")
+                    return@withContext ProcessResult(
+                        isKnown = false,
+                        student = null,
+                        confidence = 0f,
+                        errorMessage = "无法获取关键点"
+                    )
+                }
+                
+                alignmentLandmarks = bestFace.landmarks
             }
             
-            // 取置信度最高的人脸
-            val bestFace = detectionResults.maxByOrNull { it.confidence }!!
-            Log.d(TAG, "Face detected: confidence=${bestFace.confidence}")
-            
-            // 2. 人脸对齐
-            val landmarks = bestFace.landmarks
-            if (landmarks == null || landmarks.isEmpty()) {
-                Log.w(TAG, "No landmarks detected")
-                return@withContext ProcessResult(
-                    isKnown = false,
-                    student = null,
-                    confidence = 0f,
-                    errorMessage = "无法获取关键点"
-                )
-            }
-            
-            // 再次检查 bitmap 是否仍然有效（可能在检测过程中被回收）
+            // 检查 bitmap 是否仍然有效
             if (bitmap.isRecycled) {
                 Log.w(TAG, "Bitmap recycled during detection")
                 return@withContext ProcessResult(
@@ -147,7 +158,8 @@ class RecognitionProcessor(private val context: Context) {
                 )
             }
             
-            val alignedFace = faceAlignment.alignFace(bitmap, landmarks)
+            // 人脸对齐
+            val alignedFace = faceAlignment.alignFace(bitmap, alignmentLandmarks)
             if (alignedFace == null) {
                 Log.w(TAG, "Face alignment failed")
                 return@withContext ProcessResult(
@@ -158,7 +170,7 @@ class RecognitionProcessor(private val context: Context) {
                 )
             }
             
-            // 3. 特征提取（挂起）
+            // 特征提取
             val feature = faceRecognizer.extractFeature(alignedFace)
             if (!alignedFace.isRecycled) {
                 alignedFace.recycle()
@@ -176,7 +188,7 @@ class RecognitionProcessor(private val context: Context) {
             
             Log.d(TAG, "Feature extracted: ${feature.size} dimensions")
             
-            // 4. 特征匹配
+            // 特征匹配
             var bestMatch: Student? = null
             var bestSimilarity = 0f
             
@@ -192,7 +204,7 @@ class RecognitionProcessor(private val context: Context) {
             
             Log.d(TAG, "Best match: ${bestMatch?.name}, similarity=$bestSimilarity, threshold=$threshold")
             
-            // 5. 判断是否匹配
+            // 判断是否匹配
             return@withContext if (bestSimilarity >= threshold && bestMatch != null) {
                 ProcessResult(
                     isKnown = true,

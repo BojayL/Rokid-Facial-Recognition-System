@@ -13,6 +13,7 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.sustech.bojayL.glasses.ml.GlassesFaceDetector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,20 +34,23 @@ class GlassesCamera(private val context: Context) {
     companion object {
         private const val TAG = "GlassesCamera"
         
-        // 采集分辨率（降低分辨率以适应 SDK 消息大小限制）
-        // 原始 1280x720 太大，降低到 640x360
-        const val CAPTURE_WIDTH = 360
-        const val CAPTURE_HEIGHT = 640
+        // 采集分辨率 - 使用 720p 以获得更好的人脸检测效果
+        const val CAPTURE_WIDTH = 720
+        const val CAPTURE_HEIGHT = 1280
         
-        // 网络传输用的输出分辨率（进一步缩小，保持 4:3 横向比例）
-        const val OUTPUT_WIDTH = 320
-        const val OUTPUT_HEIGHT = 240
+        // 人脸裁切后的输出尺寸（由 GlassesFaceDetector 定义）
+        const val OUTPUT_FACE_SIZE = GlassesFaceDetector.OUTPUT_FACE_SIZE
         
         // 额外旋转角度（用于修正眼镜相机方向）
         const val EXTRA_ROTATION = 90f
         
-        // JPEG 压缩质量（降低以减小数据大小）
-        const val JPEG_QUALITY = 35
+        // JPEG 压缩质量（裁切人脸后可以用更高质量）
+        const val JPEG_QUALITY = 70
+        
+        // 无人脸时的降级输出分辨率
+        const val FALLBACK_WIDTH = 320
+        const val FALLBACK_HEIGHT = 240
+        const val FALLBACK_JPEG_QUALITY = 35
     }
     
     // 相机状态
@@ -64,8 +68,12 @@ class GlassesCamera(private val context: Context) {
     // 执行器
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     
-    // 图像回调
-    private var imageCallback: ((ByteArray, Int, Int) -> Unit)? = null
+    // 图像回调 (imageData, width, height, landmarks)
+    // landmarks: 5个关键点坐标 [x1,y1,...,x5,y5]，如果没有检测到人脸则为 null
+    private var imageCallback: ((ByteArray, Int, Int, FloatArray?) -> Unit)? = null
+    
+    // 人脸检测器是否已初始化
+    private var isFaceDetectorInitialized = false
     
     // 上次采集时间（用于控制采集间隔）
     private var lastCaptureTime = 0L
@@ -75,11 +83,18 @@ class GlassesCamera(private val context: Context) {
     private var autoCapture = true
     
     /**
-     * 初始化相机
+     * 初始化相机和人脸检测器
+     * 
+     * @param onImageCaptured 回调函数 (imageData, width, height, landmarks)
+     *        landmarks 为 null 表示没有检测到人脸（此时传输的是降级的全图）
      */
-    fun initialize(lifecycleOwner: LifecycleOwner, onImageCaptured: (ByteArray, Int, Int) -> Unit) {
-        Log.d(TAG, "Initializing camera...")
+    fun initialize(lifecycleOwner: LifecycleOwner, onImageCaptured: (ByteArray, Int, Int, FloatArray?) -> Unit) {
+        Log.d(TAG, "Initializing camera and face detector...")
         imageCallback = onImageCaptured
+        
+        // 初始化人脸检测器
+        isFaceDetectorInitialized = GlassesFaceDetector.init(context, useGpu = false)
+        Log.d(TAG, "Face detector initialized: $isFaceDetectorInitialized")
         
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
@@ -133,7 +148,7 @@ class GlassesCamera(private val context: Context) {
     }
     
     /**
-     * 处理图像
+     * 处理图像：检测人脸并裁切
      */
     private fun processImage(imageProxy: ImageProxy) {
         if (!_isCapturing.value) {
@@ -150,16 +165,25 @@ class GlassesCamera(private val context: Context) {
         }
         
         try {
-            // 转换为 JPEG
-            val result = imageProxyToJpeg(imageProxy)
+            // 转换为 Bitmap
+            val bitmap = imageProxyToBitmap(imageProxy)
             
-            if (result != null) {
+            if (bitmap != null) {
                 lastCaptureTime = currentTime
                 
-                // 回调（使用实际输出尺寸）
-                imageCallback?.invoke(result.data, result.width, result.height)
+                // 尝试检测并裁切人脸
+                val result = processWithFaceDetection(bitmap)
                 
-                Log.d(TAG, "Image captured: ${result.data.size} bytes, ${result.width}x${result.height}")
+                if (result != null) {
+                    imageCallback?.invoke(result.data, result.width, result.height, result.landmarks)
+                    Log.d(TAG, "Image captured: ${result.data.size} bytes, ${result.width}x${result.height}, " +
+                            "hasLandmarks=${result.landmarks != null}")
+                }
+                
+                // 回收 Bitmap
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process image", e)
@@ -169,21 +193,88 @@ class GlassesCamera(private val context: Context) {
     }
     
     /**
+     * 带人脸检测的图像处理
+     * 
+     * 如果检测到人脸，返回裁切后的人脸图像和关键点；
+     * 否则返回降级压缩的全图（无关键点）。
+     */
+    private fun processWithFaceDetection(bitmap: Bitmap): ImageResult? {
+        if (isFaceDetectorInitialized) {
+            // 尝试检测并裁切人脸
+            val croppedFace = GlassesFaceDetector.detectAndCrop(bitmap)
+            
+            if (croppedFace != null) {
+                // 成功检测到人脸，压缩裁切后的人脸图像
+                val outputStream = ByteArrayOutputStream()
+                croppedFace.bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, outputStream)
+                
+                val result = ImageResult(
+                    data = outputStream.toByteArray(),
+                    width = croppedFace.bitmap.width,
+                    height = croppedFace.bitmap.height,
+                    landmarks = croppedFace.landmarks
+                )
+                
+                // 回收裁切的 Bitmap
+                if (!croppedFace.bitmap.isRecycled) {
+                    croppedFace.bitmap.recycle()
+                }
+                
+                Log.d(TAG, "Face detected and cropped: ${result.data.size} bytes")
+                return result
+            }
+        }
+        
+        // 未检测到人脸或检测器未初始化，返回降级压缩的全图
+        Log.d(TAG, "No face detected, falling back to full image")
+        return fallbackFullImage(bitmap)
+    }
+    
+    /**
+     * 降级方案：压缩全图传输
+     */
+    private fun fallbackFullImage(bitmap: Bitmap): ImageResult {
+        // 缩放到降级尺寸
+        val scaledBitmap = Bitmap.createScaledBitmap(
+            bitmap,
+            FALLBACK_WIDTH,
+            FALLBACK_HEIGHT,
+            true
+        )
+        
+        val outputStream = ByteArrayOutputStream()
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, FALLBACK_JPEG_QUALITY, outputStream)
+        
+        val result = ImageResult(
+            data = outputStream.toByteArray(),
+            width = FALLBACK_WIDTH,
+            height = FALLBACK_HEIGHT,
+            landmarks = null  // 无关键点表示是全图
+        )
+        
+        if (scaledBitmap !== bitmap && !scaledBitmap.isRecycled) {
+            scaledBitmap.recycle()
+        }
+        
+        return result
+    }
+    
+    /**
      * 图像转换结果
      */
     private data class ImageResult(
         val data: ByteArray,
         val width: Int,
-        val height: Int
+        val height: Int,
+        val landmarks: FloatArray?  // 5个关键点坐标，如果是全图则为 null
     )
     
     /**
-     * ImageProxy 转 JPEG
+     * ImageProxy 转 Bitmap
      * 
-     * 注意：为了适应 Rokid SDK 的消息大小限制（约 64KB），
-     * 需要大幅压缩图像。目标是将 Base64 编码后的数据控制在 50KB 以内。
+     * 保持较高分辨率用于人脸检测，检测后再裁切人脸区域。
      */
-    private fun imageProxyToJpeg(imageProxy: ImageProxy): ImageResult? {
+    private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
         return try {
             // 正确处理 YUV_420_888 到 NV21 的转换
             val nv21 = yuv420888ToNv21(imageProxy)
@@ -196,23 +287,22 @@ class GlassesCamera(private val context: Context) {
                 null
             )
             
-            // 第一步：压缩为 JPEG
+            // 压缩为 JPEG（使用较高质量以保留人脸细节）
             val outputStream = ByteArrayOutputStream()
             yuvImage.compressToJpeg(
                 Rect(0, 0, imageProxy.width, imageProxy.height),
-                60,  // 中等质量
+                80,  // 较高质量用于人脸检测
                 outputStream
             )
             
-            // 第二步：解码为 Bitmap
+            // 解码为 Bitmap
             val originalBitmap = BitmapFactory.decodeByteArray(
                 outputStream.toByteArray(),
                 0,
                 outputStream.size()
             )
             
-            // 第三步：旋转图像
-            // CameraX 的 rotationDegrees 是传感器方向，再加上额外旋转以修正眼镜显示方向
+            // 旋转图像以修正眼镜相机方向
             val totalRotation = imageProxy.imageInfo.rotationDegrees.toFloat() + EXTRA_ROTATION
             val matrix = Matrix().apply {
                 postRotate(totalRotation)
@@ -226,42 +316,16 @@ class GlassesCamera(private val context: Context) {
                 true
             )
             
-            // 第四步：缩放到输出尺寸，保持宽高比
-            // 根据旋转后的图像方向确定目标尺寸
-            val targetWidth: Int
-            val targetHeight: Int
-            if (rotatedBitmap.width > rotatedBitmap.height) {
-                // 横向图像
-                targetWidth = OUTPUT_WIDTH
-                targetHeight = OUTPUT_HEIGHT
-            } else {
-                // 竖向图像
-                targetWidth = OUTPUT_HEIGHT
-                targetHeight = OUTPUT_WIDTH
+            // 释放原始 Bitmap
+            if (originalBitmap !== rotatedBitmap) {
+                originalBitmap.recycle()
             }
             
-            val scaledBitmap = Bitmap.createScaledBitmap(
-                rotatedBitmap,
-                targetWidth,
-                targetHeight,
-                true
-            )
+            Log.d(TAG, "Bitmap created: ${rotatedBitmap.width}x${rotatedBitmap.height}")
+            rotatedBitmap
             
-            // 第五步：压缩为低质量 JPEG
-            val finalOutputStream = ByteArrayOutputStream()
-            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, finalOutputStream)
-            
-            // 释放 Bitmap
-            originalBitmap.recycle()
-            rotatedBitmap.recycle()
-            scaledBitmap.recycle()
-            
-            val resultData = finalOutputStream.toByteArray()
-            Log.d(TAG, "Compressed image: ${resultData.size} bytes (${targetWidth}x${targetHeight}, quality=$JPEG_QUALITY)")
-            
-            ImageResult(resultData, targetWidth, targetHeight)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to convert to JPEG", e)
+            Log.e(TAG, "Failed to convert to Bitmap", e)
             null
         }
     }
@@ -402,7 +466,7 @@ class GlassesCamera(private val context: Context) {
      * 释放资源
      */
     fun release() {
-        Log.d(TAG, "Releasing camera")
+        Log.d(TAG, "Releasing camera and face detector")
         stopCapture()
         
         try {
@@ -410,6 +474,10 @@ class GlassesCamera(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to unbind camera", e)
         }
+        
+        // 释放人脸检测器
+        GlassesFaceDetector.release()
+        isFaceDetectorInitialized = false
         
         cameraExecutor.shutdown()
         _isInitialized.value = false

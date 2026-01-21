@@ -99,12 +99,16 @@ class MainActivity : ComponentActivity() {
     
     /**
      * 处理识别请求
+     * 
+     * @param request 识别请求，包含图像和可选的关键点
      */
     private fun handleRecognitionRequest(request: RecognitionRequest) {
-        Log.d(TAG, "Handling recognition request")
+        Log.d(TAG, "Handling recognition request, hasLandmarks=${request.landmarks != null}")
         
         kotlinx.coroutines.MainScope().launch {
-            val result = recognitionProcessor?.process(request.bitmap)
+            // 传递关键点到 RecognitionProcessor
+            // 如果有关键点，则跳过人脸检测，直接进行对齐
+            val result = recognitionProcessor?.process(request.bitmap, request.landmarks)
             
             if (result != null) {
                 rokidService?.sendRecognitionResult(
