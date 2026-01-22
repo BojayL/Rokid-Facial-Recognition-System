@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">CXRSSDKSamples</string>
+    <string name="title_activity_self_cmdactivity">SelfCMDActivity</string>
+    <string name="title_activity_keys">KeysActivity</string>
+    <string name="title_activity_audio_record">AudioRecordActivity</string>
+    <string name="title_activity_video_record">VideoRecordActivity</string>
+</resources>
