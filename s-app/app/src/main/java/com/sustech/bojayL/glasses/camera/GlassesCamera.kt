@@ -34,9 +34,10 @@ class GlassesCamera(private val context: Context) {
     companion object {
         private const val TAG = "GlassesCamera"
         
-        // 采集分辨率 - 使用 720p 以获得更好的人脸检测效果
-        const val CAPTURE_WIDTH = 720
-        const val CAPTURE_HEIGHT = 1280
+        // 采集分辨率 - 使用 4K 3:4 比例以获得最高人脸检测精度
+        // 注意：CameraX 会自动选择最接近的支持分辨率
+        const val CAPTURE_WIDTH = 2880
+        const val CAPTURE_HEIGHT = 3840
         
         // 人脸裁切后的输出尺寸（由 GlassesFaceDetector 定义）
         const val OUTPUT_FACE_SIZE = GlassesFaceDetector.OUTPUT_FACE_SIZE
@@ -44,8 +45,13 @@ class GlassesCamera(private val context: Context) {
         // 额外旋转角度（用于修正眼镜相机方向）
         const val EXTRA_ROTATION = 90f
         
-        // JPEG 压缩质量（裁切人脸后可以用更高质量）
-        const val JPEG_QUALITY = 70
+        // JPEG 压缩初始质量（会动态调整以满足大小限制）
+        const val JPEG_QUALITY_INITIAL = 95
+        const val JPEG_QUALITY_MIN = 50
+        const val JPEG_QUALITY_STEP = 5
+        
+        // 蓝牙传输大小限制 (40KB)
+        const val MAX_IMAGE_SIZE_BYTES = 40 * 1024
         
         // 无人脸时的降级输出分辨率
         const val FALLBACK_WIDTH = 320
@@ -204,12 +210,17 @@ class GlassesCamera(private val context: Context) {
             val croppedFace = GlassesFaceDetector.detectAndCrop(bitmap)
             
             if (croppedFace != null) {
-                // 成功检测到人脸，压缩裁切后的人脸图像
-                val outputStream = ByteArrayOutputStream()
-                croppedFace.bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, outputStream)
+                // 成功检测到人脸，使用动态压缩以保持在40KB限制内
+                val compressedData = compressWithSizeLimit(
+                    croppedFace.bitmap,
+                    MAX_IMAGE_SIZE_BYTES,
+                    JPEG_QUALITY_INITIAL,
+                    JPEG_QUALITY_MIN,
+                    JPEG_QUALITY_STEP
+                )
                 
                 val result = ImageResult(
-                    data = outputStream.toByteArray(),
+                    data = compressedData,
                     width = croppedFace.bitmap.width,
                     height = croppedFace.bitmap.height,
                     landmarks = croppedFace.landmarks
@@ -228,6 +239,47 @@ class GlassesCamera(private val context: Context) {
         // 未检测到人脸或检测器未初始化，返回降级压缩的全图
         Log.d(TAG, "No face detected, falling back to full image")
         return fallbackFullImage(bitmap)
+    }
+    
+    /**
+     * 动态压缩图像以满足大小限制
+     * 
+     * 从高质量开始压缩，如果超出限制则逐步降低质量直到满足要求。
+     * 
+     * @param bitmap 待压缩的 Bitmap
+     * @param maxSizeBytes 最大允许字节数
+     * @param initialQuality 初始压缩质量 (0-100)
+     * @param minQuality 最低压缩质量
+     * @param qualityStep 每次降低的质量步长
+     * @return 压缩后的字节数组
+     */
+    private fun compressWithSizeLimit(
+        bitmap: Bitmap,
+        maxSizeBytes: Int,
+        initialQuality: Int,
+        minQuality: Int,
+        qualityStep: Int
+    ): ByteArray {
+        var quality = initialQuality
+        var outputStream = ByteArrayOutputStream()
+        
+        while (quality >= minQuality) {
+            outputStream.reset()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+            
+            val size = outputStream.size()
+            if (size <= maxSizeBytes) {
+                Log.d(TAG, "Compressed to $size bytes at quality $quality")
+                return outputStream.toByteArray()
+            }
+            
+            Log.d(TAG, "Size $size bytes exceeds limit at quality $quality, reducing...")
+            quality -= qualityStep
+        }
+        
+        // 最低质量仍超限，返回最后一次压缩结果
+        Log.w(TAG, "Could not compress to target size, final size: ${outputStream.size()} bytes")
+        return outputStream.toByteArray()
     }
     
     /**

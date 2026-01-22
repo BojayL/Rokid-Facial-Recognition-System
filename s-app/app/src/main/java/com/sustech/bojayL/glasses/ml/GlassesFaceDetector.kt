@@ -35,9 +35,9 @@ object GlassesFaceDetector {
     private const val CROP_MARGIN_RATIO = 0.3f
     
     /**
-     * 输出人脸尺寸
+     * 输出人脸尺寸（提升到256以获得更高识别精度）
      */
-    const val OUTPUT_FACE_SIZE = 160
+    const val OUTPUT_FACE_SIZE = 256
     
     private var isNativeLoaded = false
     private var isInitialized = false
