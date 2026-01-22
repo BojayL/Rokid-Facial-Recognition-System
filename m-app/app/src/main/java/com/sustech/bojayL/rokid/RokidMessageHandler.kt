@@ -147,8 +147,11 @@ class RokidMessageHandler {
             }
             
             Log.d(TAG, "Caps created with ${caps.size()} fields, sending to glasses...")
-            CxrApi.getInstance().sendCustomCmd(KEY_PHONE_RESULT, caps)
-            Log.d(TAG, "sendCustomCmd called successfully for KEY_PHONE_RESULT")
+            // 注意：使用 KEY_SUBSCRIBE_GLASS (rk_custom_key) 作为 cmdKey
+            // 因为眼镜端发送使用 rk_custom_key，手机端监听 rk_custom_key
+            // 反向可能也需要使用相同的 key
+            CxrApi.getInstance().sendCustomCmd(KEY_SUBSCRIBE_GLASS, caps)
+            Log.d(TAG, "sendCustomCmd called with key='$KEY_SUBSCRIBE_GLASS' (trying glasses-style key)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send recognition result", e)
         }

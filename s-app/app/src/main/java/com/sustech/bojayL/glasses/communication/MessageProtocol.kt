@@ -32,7 +32,8 @@ object MessageProtocol {
     const val KEY_PAIRING_CONFIRMED = "pairing_confirmed"
     
     /** 订阅手机端消息的 Key */
-    const val KEY_SUBSCRIBE_PHONE = "rk_custom_client"
+    // 尝试使用 rk_custom_key，因为手机端发送的是这个 key
+    const val KEY_SUBSCRIBE_PHONE = "rk_custom_key"
     
     // ========== 消息字段定义 ==========
     

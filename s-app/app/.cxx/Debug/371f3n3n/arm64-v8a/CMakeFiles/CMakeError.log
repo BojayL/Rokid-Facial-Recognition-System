@@ -1,9 +1,9 @@
 Performing C SOURCE FILE Test CMAKE_HAVE_LIBC_PTHREAD failed with the following output:
 Change Dir: /Users/bojay.l/Developer/Rokid/FReg/s-app/app/.cxx/Debug/371f3n3n/arm64-v8a/CMakeFiles/CMakeTmp
 
-Run Build Command(s):/Users/bojay.l/Library/Android/sdk/cmake/3.22.1/bin/ninja cmTC_1140b && [1/2] Building C object CMakeFiles/cmTC_1140b.dir/src.c.o
-FAILED: CMakeFiles/cmTC_1140b.dir/src.c.o 
-/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang --target=aarch64-none-linux-android31 --sysroot=/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -DCMAKE_HAVE_LIBC_PTHREAD  -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fPIE -MD -MT CMakeFiles/cmTC_1140b.dir/src.c.o -MF CMakeFiles/cmTC_1140b.dir/src.c.o.d -o CMakeFiles/cmTC_1140b.dir/src.c.o -c /Users/bojay.l/Developer/Rokid/FReg/s-app/app/.cxx/Debug/371f3n3n/arm64-v8a/CMakeFiles/CMakeTmp/src.c
+Run Build Command(s):/Users/bojay.l/Library/Android/sdk/cmake/3.22.1/bin/ninja cmTC_a5d9f && [1/2] Building C object CMakeFiles/cmTC_a5d9f.dir/src.c.o
+FAILED: CMakeFiles/cmTC_a5d9f.dir/src.c.o 
+/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang --target=aarch64-none-linux-android31 --sysroot=/Users/bojay.l/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -DCMAKE_HAVE_LIBC_PTHREAD  -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fPIE -MD -MT CMakeFiles/cmTC_a5d9f.dir/src.c.o -MF CMakeFiles/cmTC_a5d9f.dir/src.c.o.d -o CMakeFiles/cmTC_a5d9f.dir/src.c.o -c /Users/bojay.l/Developer/Rokid/FReg/s-app/app/.cxx/Debug/371f3n3n/arm64-v8a/CMakeFiles/CMakeTmp/src.c
 /Users/bojay.l/Developer/Rokid/FReg/s-app/app/.cxx/Debug/371f3n3n/arm64-v8a/CMakeFiles/CMakeTmp/src.c:13:3: error: call to undeclared function 'pthread_cancel'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
    13 |   pthread_cancel(thread);
       |   ^

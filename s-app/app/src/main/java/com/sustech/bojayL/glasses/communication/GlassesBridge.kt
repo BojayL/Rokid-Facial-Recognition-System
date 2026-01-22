@@ -25,6 +25,10 @@ class GlassesBridge {
     
     private val cxrServiceBridge = CXRServiceBridge()
     
+    // 是否已订阅消息（防止重复订阅导致回调失效）
+    @Volatile
+    private var isSubscribed = false
+    
     // 连接状态
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
@@ -55,7 +59,8 @@ class GlassesBridge {
             _isPaired.value = true
             Log.d(TAG, "Auto-paired on connection, isConnected=${_isConnected.value}, isPaired=${_isPaired.value}")
             
-            // 连接成功后订阅消息（关键：必须在连接后订阅才能收到手机端消息）
+            // 连接成功后再次订阅消息，确保回调生效
+            // SDK 可能需要在连接后重新注册回调
             subscribePhoneMessages()
         }
         
@@ -66,7 +71,9 @@ class GlassesBridge {
             _isPaired.value = false
             // 清除识别结果
             _recognitionResult.value = null
-            Log.d(TAG, "States reset: isConnected=${_isConnected.value}, isPaired=${_isPaired.value}")
+            // 重置订阅状态，方便重新连接时再次订阅
+            isSubscribed = false
+            Log.d(TAG, "States reset: isConnected=${_isConnected.value}, isPaired=${_isPaired.value}, isSubscribed=$isSubscribed")
         }
         
         override fun onARTCStatus(p0: Float, p1: Boolean) {
@@ -80,8 +87,9 @@ class GlassesBridge {
         override fun onReceive(name: String?, args: Caps?, bytes: ByteArray?) {
             Log.d(TAG, "===== Received message from phone =====")
             Log.d(TAG, "name='$name', args size=${args?.size() ?: 0}, bytes size=${bytes?.size ?: 0}")
-            Log.d(TAG, "Expected KEY_PHONE_RESULT='${MessageProtocol.KEY_PHONE_RESULT}'")
             
+            // 由于手机端使用 rk_custom_key 发送，name 可能是 rk_custom_key
+            // 我们需要尝试解析 args 中的内容来确定消息类型
             when (name) {
                 MessageProtocol.KEY_PHONE_RESULT -> {
                     Log.d(TAG, "Matched KEY_PHONE_RESULT, parsing recognition result...")
@@ -95,8 +103,22 @@ class GlassesBridge {
                     Log.d(TAG, "Matched KEY_PHONE_VERIFY_CODE, verifying...")
                     args?.let { verifyPairingCode(it) }
                 }
+                MessageProtocol.KEY_SUBSCRIBE_PHONE, "rk_custom_key" -> {
+                    // 手机端发送的消息可能使用 rk_custom_key 作为 name
+                    // 尝试解析为识别结果
+                    Log.d(TAG, "Received rk_custom_key message, trying to parse as recognition result...")
+                    args?.let { parseRecognitionResult(it) }
+                }
                 else -> {
-                    Log.w(TAG, "Unknown message name: '$name', not handled")
+                    // 尝试解析任何消息为识别结果
+                    Log.w(TAG, "Unknown message name: '$name', trying to parse as recognition result anyway...")
+                    args?.let { 
+                        try {
+                            parseRecognitionResult(it)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to parse as recognition result", e)
+                        }
+                    }
                 }
             }
         }
@@ -112,21 +134,28 @@ class GlassesBridge {
         _isConnected.value = false
         _isPaired.value = false
         _recognitionResult.value = null
+        isSubscribed = false  // 重置订阅状态
         
         cxrServiceBridge.setStatusListener(statusListener)
         
-        // 订阅手机端消息
+        // 根据 SDK demo，在 init 中直接订阅消息（与 onConnected 中订阅相比更可靠）
         subscribePhoneMessages()
         
-        Log.d(TAG, "GlassesBridge initialized, waiting for connection")
+        Log.d(TAG, "GlassesBridge initialized, subscribed to messages, waiting for connection")
     }
     
     /**
      * 订阅手机端消息
      * 
      * 注意：必须在连接建立后调用才能生效
+     * 重复订阅会导致回调失效，所以只能订阅一次
      */
     private fun subscribePhoneMessages() {
+        if (isSubscribed) {
+            Log.w(TAG, "Already subscribed, ignoring duplicate subscription request")
+            return
+        }
+        
         val result = cxrServiceBridge.subscribe(MessageProtocol.KEY_SUBSCRIBE_PHONE, msgCallback)
         Log.d(TAG, "Subscribe to phone messages: key=${MessageProtocol.KEY_SUBSCRIBE_PHONE}, result=$result")
         
@@ -134,6 +163,7 @@ class GlassesBridge {
             Log.e(TAG, "Failed to subscribe! error code=$result")
         } else {
             Log.d(TAG, "Successfully subscribed to phone messages")
+            isSubscribed = true
         }
     }
     
@@ -350,6 +380,7 @@ class GlassesBridge {
         Log.d(TAG, "Releasing GlassesBridge")
         cxrServiceBridge.setStatusListener(null)
         _isPaired.value = false
+        isSubscribed = false  // 重置订阅状态，下次连接时可以重新订阅
     }
     
     /**
