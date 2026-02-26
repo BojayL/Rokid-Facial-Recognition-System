@@ -21,7 +21,10 @@ data class Student(
     val photoUrl: String? = null,      // 证件照 URL
     val parentContact: String? = null, // 家长联系方式
     val faceFeatureId: String? = null, // 人脸特征 ID（用于识别）
-    val faceFeature: List<Float>? = null, // 512维人脸特征向量（MobileFaceNet）
+    val faceFeature: List<Float>? = null, // 人脸特征向量（端侧模板: 256维）
+    val faceFeatureDim: Int? = null,   // 特征维度
+    val faceFeatureModel: String? = null, // 特征模型标识
+    val faceFeatureUpdatedAt: Long? = null, // 特征更新时间
     val isEnrolled: Boolean = false,   // 是否已录入人脸
     val tags: List<String> = emptyList(), // 标签（如：优秀、重点关注等）
     val academicInfo: AcademicInfo? = null,

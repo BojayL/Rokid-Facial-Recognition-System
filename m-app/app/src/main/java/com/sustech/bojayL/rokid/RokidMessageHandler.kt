@@ -1,168 +1,148 @@
 package com.sustech.bojayL.rokid
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.util.Base64
 import android.util.Log
 import com.rokid.cxr.Caps
 import com.rokid.cxr.client.extend.CxrApi
 import com.rokid.cxr.client.extend.listeners.CustomCmdListener
 import com.sustech.bojayL.data.model.Student
+import com.sustech.bojayL.ml.SnpeFaceNetRecognizer
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.UUID
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 /**
- * Rokid 消息处理器
- * 
- * 处理与眼镜端的自定义消息通信
+ * Rokid 消息处理器（端侧识别版）
  */
 class RokidMessageHandler {
-    
+
     companion object {
         private const val TAG = "RokidMessageHandler"
-        
-        // 消息 Key 定义 (与眼镜端一致)
-        const val KEY_GLASS_RECOGNIZE = "glass_recognize"
+
+        // Glass -> Phone
+        const val KEY_GLASS_RESULT = "glass_result"
         const val KEY_GLASS_STATUS = "glass_status"
         const val KEY_GLASS_PAIRING_CODE = "glass_pairing_code"
-        const val KEY_PHONE_RESULT = "phone_result"
+        const val KEY_PAIRING_CONFIRMED = "pairing_confirmed"
+
+        // Phone -> Glass
+        const val KEY_PHONE_TEMPLATE_SYNC = "phone_template_sync"
         const val KEY_PHONE_CONFIG = "phone_config"
         const val KEY_PHONE_VERIFY_CODE = "phone_verify_code"
-        const val KEY_PAIRING_CONFIRMED = "pairing_confirmed"
-        const val KEY_SUBSCRIBE_GLASS = "rk_custom_key"
+
+        private const val TEMPLATE_EMBEDDING_DIM = 256
     }
-    
-    // 识别请求流（添加缓冲区避免丢失消息）
-    private val _recognitionRequests = MutableSharedFlow<RecognitionRequest>(
+
+    private val _glassRecognitionResults = MutableSharedFlow<GlassRecognitionPayload>(
         replay = 0,
-        extraBufferCapacity = 1,
+        extraBufferCapacity = 8,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    val recognitionRequests: SharedFlow<RecognitionRequest> = _recognitionRequests.asSharedFlow()
-    
-    // 眼镜状态流
+    val glassRecognitionResults: SharedFlow<GlassRecognitionPayload> = _glassRecognitionResults.asSharedFlow()
+
     private val _glassStatus = MutableSharedFlow<GlassStatus>(
         replay = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val glassStatus: SharedFlow<GlassStatus> = _glassStatus.asSharedFlow()
-    
-    // 配对码流
+
     private val _glassPairingCode = MutableSharedFlow<GlassPairingInfo>(
         replay = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val glassPairingCode: SharedFlow<GlassPairingInfo> = _glassPairingCode.asSharedFlow()
-    
-    // 配对确认流
+
     private val _pairingConfirmed = MutableSharedFlow<PairingConfirmation>(
         replay = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val pairingConfirmed: SharedFlow<PairingConfirmation> = _pairingConfirmed.asSharedFlow()
-    
-    // 自定义消息监听器
+
     private val customCmdListener = CustomCmdListener { cmdKey, caps ->
-        Log.d(TAG, "===== Received custom cmd: cmdKey='$cmdKey', caps size=${caps?.size() ?: 0} =====")
-        
+        Log.d(TAG, "Received cmd: key=$cmdKey size=${caps?.size() ?: 0}")
         when (cmdKey) {
-            KEY_GLASS_RECOGNIZE -> {
-                Log.d(TAG, "Handling KEY_GLASS_RECOGNIZE")
-                caps?.let { parseRecognitionRequest(it) }
-            }
-            KEY_GLASS_STATUS -> {
-                Log.d(TAG, "Handling KEY_GLASS_STATUS")
-                caps?.let { parseGlassStatus(it) }
-            }
-            KEY_GLASS_PAIRING_CODE -> {
-                Log.d(TAG, "Handling KEY_GLASS_PAIRING_CODE")
-                caps?.let { parseGlassPairingCode(it) }
-            }
-            KEY_PAIRING_CONFIRMED -> {
-                Log.d(TAG, "Handling KEY_PAIRING_CONFIRMED")
-                caps?.let { parsePairingConfirmation(it) }
-            }
+            KEY_GLASS_RESULT -> caps?.let { parseGlassResult(it) }
+            KEY_GLASS_STATUS -> caps?.let { parseGlassStatus(it) }
+            KEY_GLASS_PAIRING_CODE -> caps?.let { parseGlassPairingCode(it) }
+            KEY_PAIRING_CONFIRMED -> caps?.let { parsePairingConfirmation(it) }
             else -> {
-                Log.w(TAG, "Unknown cmdKey: '$cmdKey'")
+                // 兼容某些固件下 key 异常回传
+                caps?.let { parseBestEffort(it) }
             }
         }
     }
-    
-    /**
-     * 开始监听消息
-     */
+
     fun startListening() {
-        Log.d(TAG, "===== Starting message listener =====")
         try {
             CxrApi.getInstance().setCustomCmdListener(customCmdListener)
-            Log.d(TAG, "setCustomCmdListener called successfully")
+            Log.d(TAG, "Message listener started")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to set custom cmd listener", e)
+            Log.e(TAG, "Failed to start listener", e)
         }
     }
-    
-    /**
-     * 停止监听消息
-     */
+
     fun stopListening() {
-        Log.d(TAG, "Stopping message listener")
         CxrApi.getInstance().setCustomCmdListener(null)
     }
-    
+
     /**
-     * 发送识别结果
-     * 
-     * 注意：Rokid SDK 的 Caps 没有 writeFloat() 方法，
-     * 需要用 writeInt32(Float.floatToIntBits(value)) 代替
+     * 下发端侧识别模板（分片发送，避免单包过大）。
      */
-    fun sendRecognitionResult(
-        isKnown: Boolean,
-        student: Student?,
-        confidence: Float
-    ) {
-        Log.d(TAG, "===== sendRecognitionResult called =====")
-        Log.d(TAG, "isKnown=$isKnown, student=${student?.name}, confidence=$confidence")
-        
-        try {
-            val caps = Caps().apply {
-                // isKnown (int: 1=known, 0=unknown)
-                writeInt32(if (isKnown) 1 else 0)
-                
-                // studentId
-                write(student?.studentId ?: "")
-                
-                // name
-                write(student?.name ?: "")
-                
-                // className
-                write(student?.className ?: "")
-                
-                // confidence (使用 floatToIntBits 编码)
-                writeInt32(java.lang.Float.floatToIntBits(confidence))
-                
-                // tags (comma-separated)
-                write(student?.tags?.joinToString(",") ?: "")
+    fun sendFaceTemplates(students: List<Student>) {
+        var skipped = 0
+        val templates = students
+            .filter { it.isEnrolled && !it.faceFeature.isNullOrEmpty() }
+            .mapNotNull { student ->
+                val feature = student.faceFeature ?: return@mapNotNull null
+                val dim = student.faceFeatureDim ?: feature.size
+                val model = student.faceFeatureModel
+
+                // 严格约束：只同步 FaceNet-MobileNetV2 256d SNPE 模板，避免不同空间混用。
+                val valid = dim == TEMPLATE_EMBEDDING_DIM &&
+                        feature.size == TEMPLATE_EMBEDDING_DIM &&
+                        model == SnpeFaceNetRecognizer.MODEL_ID
+                if (!valid) {
+                    skipped += 1
+                    return@mapNotNull null
+                }
+
+                JSONObject().apply {
+                    put("studentId", student.id)
+                    put("studentName", student.name)
+                    put("className", student.className)
+                    put("tags", JSONArray(student.tags))
+                    put("embedding", JSONArray(feature))
+                    put("embeddingDim", TEMPLATE_EMBEDDING_DIM)
+                    put("modelId", model)
+                }
             }
-            
-            Log.d(TAG, "Caps created with ${caps.size()} fields, sending to glasses...")
-            // 注意：使用 KEY_SUBSCRIBE_GLASS (rk_custom_key) 作为 cmdKey
-            // 因为眼镜端发送使用 rk_custom_key，手机端监听 rk_custom_key
-            // 反向可能也需要使用相同的 key
-            CxrApi.getInstance().sendCustomCmd(KEY_SUBSCRIBE_GLASS, caps)
-            Log.d(TAG, "sendCustomCmd called with key='$KEY_SUBSCRIBE_GLASS' (trying glasses-style key)")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send recognition result", e)
+
+        val root = JSONObject().apply {
+            put("version", 1)
+            put("embeddingDim", TEMPLATE_EMBEDDING_DIM)
+            put("modelId", SnpeFaceNetRecognizer.MODEL_ID)
+            put("templates", JSONArray(templates))
         }
+        val payload = root.toString()
+        val chunks = payload.chunked(3000)
+        val syncId = UUID.randomUUID().toString()
+
+        chunks.forEachIndexed { index, chunk ->
+            val caps = Caps().apply {
+                write(syncId)
+                writeInt32(index)
+                writeInt32(chunks.size)
+                write(chunk)
+                writeInt32(templates.size)
+            }
+            CxrApi.getInstance().sendCustomCmd(KEY_PHONE_TEMPLATE_SYNC, caps)
+        }
+        Log.i(TAG, "Template sync sent: id=$syncId templates=${templates.size} skipped=$skipped chunks=${chunks.size}")
     }
-    
-    /**
-     * 发送配置参数
-     * 
-     * 注意：使用 floatToIntBits 编码浮点数
-     * @param showReticle 是否显示准心
-     */
+
     fun sendConfig(
         threshold: Float,
         intervalMs: Long,
@@ -175,208 +155,126 @@ class RokidMessageHandler {
             writeInt32(brightness)
             writeInt32(if (showReticle) 1 else 0)
         }
-        
         CxrApi.getInstance().sendCustomCmd(KEY_PHONE_CONFIG, caps)
-        Log.d(TAG, "Sent config: threshold=$threshold, interval=$intervalMs, showReticle=$showReticle")
     }
-    
-    /**
-     * 解析识别请求
-     * 
-     * 消息格式：
-     * - caps[0]: String - 图片 Base64 编码
-     * - caps[1]: Long - 时间戳
-     * - caps[2]: Int - 是否有关键点 (1=有，0=无)
-     * - caps[3-12]: Int - 关键点坐标 (floatToIntBits 编码)
-     */
-    private fun parseRecognitionRequest(caps: Caps) {
+
+    fun sendPairingCode(code: String) {
+        val caps = Caps().apply { write(code) }
+        CxrApi.getInstance().sendCustomCmd(KEY_PHONE_VERIFY_CODE, caps)
+    }
+
+    private fun parseBestEffort(caps: Caps) {
         try {
-            Log.d(TAG, "parseRecognitionRequest: caps.size()=${caps.size()}")
-            
-            // 图片 Base64
-            val imageBase64 = caps.at(0).string
-            Log.d(TAG, "Base64 string length: ${imageBase64?.length ?: 0}")
-            
-            if (imageBase64.isNullOrEmpty()) {
-                Log.e(TAG, "imageBase64 is null or empty!")
-                return
-            }
-            
-            // 时间戳
-            val timestamp = try {
-                if (caps.size() > 1) caps.at(1).long else System.currentTimeMillis()
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to read timestamp as long, using current time", e)
-                System.currentTimeMillis()
-            }
-            
-            // 解析关键点
-            var landmarks: FloatArray? = null
-            try {
-                if (caps.size() > 2) {
-                    val hasLandmarks = caps.at(2).int == 1
-                    if (hasLandmarks && caps.size() >= 13) {  // 3 + 10 个关键点坐标
-                        landmarks = FloatArray(10)
-                        for (i in 0 until 10) {
-                            val intBits = caps.at(3 + i).int
-                            landmarks[i] = java.lang.Float.intBitsToFloat(intBits)
-                        }
-                        Log.d(TAG, "Parsed landmarks: [${landmarks.take(4).joinToString()}...]")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to parse landmarks", e)
-                landmarks = null
-            }
-            
-            // 解码图片
-            val imageData = Base64.decode(imageBase64, Base64.NO_WRAP)
-            Log.d(TAG, "Decoded image data size: ${imageData.size} bytes")
-            
-            val bitmap = BitmapFactory.decodeByteArray(imageData, 0, imageData.size)
-            
-            if (bitmap != null) {
-                val request = RecognitionRequest(
-                    bitmap = bitmap,
-                    timestamp = timestamp,
-                    landmarks = landmarks
-                )
-                
-                // 发送到流
-                val emitResult = _recognitionRequests.tryEmit(request)
-                Log.d(TAG, "Parsed recognition request, image size: ${bitmap.width}x${bitmap.height}, " +
-                        "hasLandmarks=${landmarks != null}, emit result: $emitResult")
-            } else {
-                Log.e(TAG, "Failed to decode image from ${imageData.size} bytes")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse recognition request", e)
+            parseGlassResult(caps)
+            return
+        } catch (_: Exception) {
+        }
+        try {
+            parseGlassStatus(caps)
+            return
+        } catch (_: Exception) {
         }
     }
-    
-    /**
-     * 解析眼镜状态
-     */
+
+    private fun parseGlassResult(caps: Caps) {
+        val isKnown = caps.at(0).int == 1
+        val studentId = if (caps.size() > 1) caps.at(1).string else null
+        val studentName = if (caps.size() > 2) caps.at(2).string else null
+        val className = if (caps.size() > 3) caps.at(3).string else null
+        val confidence = if (caps.size() > 4) {
+            java.lang.Float.intBitsToFloat(caps.at(4).int)
+        } else {
+            0f
+        }
+        val tags = if (caps.size() > 5) {
+            caps.at(5).string?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+        } else {
+            emptyList()
+        }
+        val timestamp = if (caps.size() > 6) caps.at(6).long else System.currentTimeMillis()
+        val source = if (caps.size() > 7) caps.at(7).string ?: "edge" else "edge"
+
+        _glassRecognitionResults.tryEmit(
+            GlassRecognitionPayload(
+                isKnown = isKnown,
+                studentId = studentId,
+                studentName = studentName,
+                className = className,
+                confidence = confidence,
+                tags = tags,
+                source = source,
+                timestamp = timestamp
+            )
+        )
+    }
+
     private fun parseGlassStatus(caps: Caps) {
-        try {
-            val battery = caps.at(0).int
-            val mode = if (caps.size() > 1) caps.at(1).string else "unknown"
-            val isConnected = if (caps.size() > 2) caps.at(2).int == 1 else true
-            
-            val status = GlassStatus(
+        val battery = caps.at(0).int
+        val mode = if (caps.size() > 1) caps.at(1).string else "unknown"
+        val isConnected = if (caps.size() > 2) {
+            try {
+                caps.at(2).int == 1
+            } catch (_: Exception) {
+                caps.at(2).string == "true"
+            }
+        } else {
+            true
+        }
+        _glassStatus.tryEmit(
+            GlassStatus(
                 battery = battery,
                 mode = mode,
                 isConnected = isConnected
             )
-            
-            _glassStatus.tryEmit(status)
-            Log.d(TAG, "Parsed glass status: battery=$battery, mode=$mode")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse glass status", e)
-        }
+        )
     }
-    
-    /**
-     * 解析眼镜配对码
-     */
+
     private fun parseGlassPairingCode(caps: Caps) {
-        try {
-            val code = caps.at(0).string
-            val deviceName = if (caps.size() > 1) caps.at(1).string else "Unknown"
-            
-            val info = GlassPairingInfo(
+        val code = caps.at(0).string
+        val deviceName = if (caps.size() > 1) caps.at(1).string else "Unknown"
+        _glassPairingCode.tryEmit(
+            GlassPairingInfo(
                 code = code,
                 deviceName = deviceName,
                 timestamp = System.currentTimeMillis()
             )
-            
-            _glassPairingCode.tryEmit(info)
-            Log.d(TAG, "Received pairing code: $code from $deviceName")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse pairing code", e)
-        }
+        )
     }
-    
-    /**
-     * 解析配对确认
-     */
+
     private fun parsePairingConfirmation(caps: Caps) {
-        try {
-            val success = caps.at(0).int == 1
-            val deviceName = if (caps.size() > 1) caps.at(1).string else "Unknown"
-            
-            val confirmation = PairingConfirmation(
+        val success = caps.at(0).int == 1
+        val deviceName = if (caps.size() > 1) caps.at(1).string else "Unknown"
+        _pairingConfirmed.tryEmit(
+            PairingConfirmation(
                 success = success,
                 deviceName = deviceName
             )
-            
-            _pairingConfirmed.tryEmit(confirmation)
-            Log.d(TAG, "Pairing confirmation: success=$success, device=$deviceName")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse pairing confirmation", e)
-        }
-    }
-    
-    /**
-     * 发送配对码验证
-     */
-    fun sendPairingCode(code: String) {
-        val caps = Caps().apply {
-            write(code)
-        }
-        
-        CxrApi.getInstance().sendCustomCmd(KEY_PHONE_VERIFY_CODE, caps)
-        Log.d(TAG, "Sent pairing code: $code")
+        )
     }
 }
 
-/**
- * 眼镜配对信息
- */
+data class GlassRecognitionPayload(
+    val isKnown: Boolean,
+    val studentId: String?,
+    val studentName: String?,
+    val className: String?,
+    val confidence: Float,
+    val tags: List<String>,
+    val source: String,
+    val timestamp: Long
+)
+
 data class GlassPairingInfo(
     val code: String,
     val deviceName: String,
     val timestamp: Long
 )
 
-/**
- * 配对确认
- */
 data class PairingConfirmation(
     val success: Boolean,
     val deviceName: String
 )
 
-/**
- * 识别请求数据
- * 
- * @param bitmap 图像（裁切后的人脸或全图）
- * @param timestamp 时间戳
- * @param landmarks 人脸关键点 [x1,y1,...,x5,y5]，如果是全图则为 null
- */
-data class RecognitionRequest(
-    val bitmap: Bitmap,
-    val timestamp: Long,
-    val landmarks: FloatArray? = null
-) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is RecognitionRequest) return false
-        return bitmap == other.bitmap && timestamp == other.timestamp &&
-                landmarks.contentEquals(other.landmarks)
-    }
-    
-    override fun hashCode(): Int {
-        var result = bitmap.hashCode()
-        result = 31 * result + timestamp.hashCode()
-        result = 31 * result + (landmarks?.contentHashCode() ?: 0)
-        return result
-    }
-}
-
-/**
- * 眼镜状态数据
- */
 data class GlassStatus(
     val battery: Int,
     val mode: String,

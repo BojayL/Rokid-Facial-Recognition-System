@@ -57,8 +57,8 @@ import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import com.sustech.bojayL.data.model.Student
 import com.sustech.bojayL.ml.FaceAlignment
-import com.sustech.bojayL.ml.FaceRecognizer
 import com.sustech.bojayL.ml.InsightfaceNcnnDetector
+import com.sustech.bojayL.ml.SnpeFaceNetRecognizer
 import com.sustech.bojayL.ui.theme.*
 import java.io.File
 import java.util.concurrent.Executor
@@ -79,7 +79,9 @@ enum class EnrollmentMethod {
  */
 data class EnrollmentResult(
     val imageUri: Uri,
-    val faceFeature: List<Float>?  // 512维特征向量
+    val faceFeature: List<Float>?,
+    val featureDim: Int?,
+    val featureModel: String?
 )
 
 /**
@@ -91,7 +93,7 @@ data class EnrollmentResult(
  * - 方式 B (相册导入)：从手机相册选择照片，支持手势缩放与移动，提供正方形/圆形裁剪框
  * - 方式 C (远程采集)：点击"远程采集"，触发眼镜端抓拍当前画面并上传更新
  * 
- * 修改：现在在录入时提取并保存 512 维人脸特征向量
+ * 修改：现在在录入时提取并保存 FaceNet-MobileNetV2 256 维特征向量
  */
 @OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -263,7 +265,9 @@ fun FaceEnrollmentScreen(
                                 if (onEnrollmentCompleteWithFeature != null) {
                                     onEnrollmentCompleteWithFeature(EnrollmentResult(
                                         imageUri = capturedImageUri!!,
-                                        faceFeature = feature
+                                        faceFeature = feature?.embedding,
+                                        featureDim = feature?.dim,
+                                        featureModel = feature?.modelId
                                     ))
                                 } else {
                                     onEnrollmentComplete(capturedImageUri)
@@ -1077,19 +1081,26 @@ private fun takePhoto(
  * 
  * @param context Android Context
  * @param imageUri 图片 URI
- * @return 512维特征向量，失败返回 null
+ * @return 256维特征向量与模型信息，失败返回 null
  */
+private data class ExtractedFeature(
+    val embedding: List<Float>,
+    val dim: Int,
+    val modelId: String
+)
+
 private suspend fun extractFaceFeature(
     context: Context,
     imageUri: Uri
-): List<Float>? = withContext(Dispatchers.IO) {
+): ExtractedFeature? = withContext(Dispatchers.IO) {
     try {
-        // 初始化检测器和识别器
+        // 初始化检测器和 SNPE 特征提取器
         if (!InsightfaceNcnnDetector.isReady()) {
             InsightfaceNcnnDetector.init(context)
         }
-        if (!FaceRecognizer.isReady()) {
-            FaceRecognizer.init(context)
+        if (!SnpeFaceNetRecognizer.init(context)) {
+            Log.e("FaceEnrollment", "SNPE not ready, cannot build 256d template")
+            return@withContext null
         }
         
         // 加载图片
@@ -1125,16 +1136,20 @@ private suspend fun extractFaceFeature(
         }
         
         // 提取特征
-        val feature = FaceRecognizer.extractFeature(alignedFace)
+        val feature = SnpeFaceNetRecognizer.extractFeature(alignedFace)
         alignedFace.recycle()
         
-        if (feature == null) {
+        if (feature == null || feature.size != SnpeFaceNetRecognizer.OUTPUT_DIM) {
             Log.w("FaceEnrollment", "Feature extraction failed")
             return@withContext null
         }
         
         Log.d("FaceEnrollment", "Feature extracted: ${feature.size} dimensions")
-        return@withContext feature.toList()
+        return@withContext ExtractedFeature(
+            embedding = feature.toList(),
+            dim = feature.size,
+            modelId = SnpeFaceNetRecognizer.MODEL_ID
+        )
         
     } catch (e: Exception) {
         Log.e("FaceEnrollment", "Feature extraction error", e)

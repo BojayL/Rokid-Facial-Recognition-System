@@ -59,9 +59,6 @@ class MainActivity : ComponentActivity() {
     // Rokid 服务
     private var rokidService: RokidService? = null
     
-    // 识别处理器
-    private var recognitionProcessor: RecognitionProcessor? = null
-    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -72,8 +69,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MobileappTheme {
                 ARClassroomApp(
-                    rokidService = rokidService,
-                    recognitionProcessor = recognitionProcessor
+                    rokidService = rokidService
                 )
             }
         }
@@ -88,47 +84,11 @@ class MainActivity : ComponentActivity() {
         rokidService = RokidService(this).apply {
             initialize(R.raw.d176a07fb29c4203ac13f37554bc43bc)
         }
-        
-        recognitionProcessor = RecognitionProcessor(this)
-        
-        // 设置识别请求回调
-        rokidService?.setOnRecognitionRequest { request ->
-            handleRecognitionRequest(request)
-        }
-    }
-    
-    /**
-     * 处理识别请求
-     * 
-     * @param request 识别请求，包含图像和可选的关键点
-     */
-    private fun handleRecognitionRequest(request: RecognitionRequest) {
-        Log.d(TAG, "Handling recognition request, hasLandmarks=${request.landmarks != null}")
-        
-        kotlinx.coroutines.MainScope().launch {
-            // 传递关键点到 RecognitionProcessor
-            // 如果有关键点，则跳过人脸检测，直接进行对齐
-            val result = recognitionProcessor?.process(request.bitmap, request.landmarks)
-            
-            if (result != null) {
-                rokidService?.sendRecognitionResult(
-                    isKnown = result.isKnown,
-                    student = result.student,
-                    confidence = result.confidence
-                )
-            }
-            
-            // 释放 Bitmap
-            if (!request.bitmap.isRecycled) {
-                request.bitmap.recycle()
-            }
-        }
     }
     
     override fun onDestroy() {
         super.onDestroy()
         rokidService?.release()
-        recognitionProcessor?.release()
         Log.d(TAG, "MainActivity destroyed")
     }
 }
@@ -153,8 +113,7 @@ enum class AppDestinations(
 @PreviewScreenSizes
 @Composable
 fun ARClassroomApp(
-    rokidService: RokidService? = null,
-    recognitionProcessor: RecognitionProcessor? = null
+    rokidService: RokidService? = null
 ) {
     // 当前导航目的地
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.CLASSROOM) }
@@ -173,10 +132,6 @@ fun ARClassroomApp(
         ?: remember { mutableStateOf(false) }
     val isPaired by rokidService?.isPaired?.collectAsState()
         ?: remember { mutableStateOf(false) }
-    
-    // 眼镜画面预览（调试用）
-    val latestGlassesFrame by rokidService?.latestGlassesFrame?.collectAsState()
-        ?: remember { mutableStateOf<GlassesFrameData?>(null) }
     
     // 设备连接状态（结合 Rokid 状态）
     var deviceState by remember { mutableStateOf(DeviceState()) }
@@ -214,9 +169,11 @@ fun ARClassroomApp(
     // 从 DataStore 读取学生列表
     val studentsList by studentRepository.studentsFlow.collectAsState(initial = StudentRepository.defaultStudents)
     
-    // 更新识别处理器的学生列表
-    LaunchedEffect(studentsList) {
-        recognitionProcessor?.updateStudents(studentsList)
+    // 学生特征模板变更时，自动同步到眼镜端
+    LaunchedEffect(studentsList, rokidConnectionState.status) {
+        if (rokidConnectionState.status == ConnectionStatus.CONNECTED) {
+            rokidService?.syncFaceTemplates(studentsList)
+        }
     }
     
     // 当前选中的学生（用于详情页）
@@ -234,20 +191,22 @@ fun ARClassroomApp(
         android.Manifest.permission.CAMERA
     )
     
-    // 初始化识别处理器
-    LaunchedEffect(Unit) {
-        recognitionProcessor?.initialize()
-    }
-    
     // 监听眼镜端识别结果，并传递给 ClassroomViewModel
-    LaunchedEffect(rokidService) {
+    LaunchedEffect(rokidService, studentsList) {
         rokidService?.recognitionResults?.collect { glassResult ->
+            val matchedStudent = if (!glassResult.studentId.isNullOrBlank()) {
+                studentsList.find {
+                    it.id == glassResult.studentId || it.studentId == glassResult.studentId
+                }
+            } else {
+                null
+            }
             // 将眼镜端结果转换为 RecognitionResult 并添加到 ViewModel
             val result = com.sustech.bojayL.data.model.RecognitionResult(
                 id = glassResult.id,
-                studentId = glassResult.student?.id,
-                student = glassResult.student,
-                sessionId = glassResult.sessionId.ifEmpty { classroomViewModel.uiState.value.session.sessionId },
+                studentId = matchedStudent?.id ?: glassResult.studentId,
+                student = matchedStudent,
+                sessionId = classroomViewModel.uiState.value.session.sessionId,
                 status = if (glassResult.isKnown) 
                     com.sustech.bojayL.data.model.RecognitionStatus.SUCCESS 
                 else 
@@ -284,8 +243,7 @@ fun ARClassroomApp(
                 // 兑容旧版回调
                 if (uri != null && selectedStudent != null) {
                     val updated = selectedStudent!!.copy(
-                        avatarUrl = uri.toString(),
-                        isEnrolled = true
+                        avatarUrl = uri.toString()
                     )
                     selectedStudent = updated
                     coroutineScope.launch {
@@ -297,10 +255,16 @@ fun ARClassroomApp(
             onEnrollmentCompleteWithFeature = { result ->
                 // 新版回调：保存头像 + 特征向量
                 if (selectedStudent != null) {
+                    val enrolled = !result.faceFeature.isNullOrEmpty() &&
+                            result.featureDim == 256 &&
+                            !result.featureModel.isNullOrBlank()
                     val updated = selectedStudent!!.copy(
                         avatarUrl = result.imageUri.toString(),
-                        isEnrolled = true,
-                        faceFeature = result.faceFeature
+                        isEnrolled = enrolled,
+                        faceFeature = result.faceFeature,
+                        faceFeatureDim = result.featureDim,
+                        faceFeatureModel = result.featureModel,
+                        faceFeatureUpdatedAt = if (enrolled) System.currentTimeMillis() else null
                     )
                     selectedStudent = updated
                     coroutineScope.launch {
@@ -408,9 +372,6 @@ fun ARClassroomApp(
                         onConnectDevice = { device -> rokidService?.connect(device) },
                         onDisconnect = { rokidService?.disconnect() },
                         isPaired = isPaired,
-                        // 眼镜画面预览（调试用）
-                        latestGlassesFrame = latestGlassesFrame?.bitmap,
-                        latestFrameTimestamp = latestGlassesFrame?.timestamp ?: 0L,
                         modifier = Modifier.padding(innerPadding)
                     )
                 }

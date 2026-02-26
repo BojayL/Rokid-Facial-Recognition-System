@@ -10,8 +10,11 @@ object MessageProtocol {
     
     // ========== 消息 Key 定义 ==========
     
-    /** 眼镜发送: 识别请求 */
+    /** 眼镜发送: 旧版识别请求（手机端识别，已废弃） */
     const val KEY_GLASS_RECOGNIZE = "glass_recognize"
+    
+    /** 眼镜发送: 端侧识别结果（推荐） */
+    const val KEY_GLASS_RESULT = "glass_result"
     
     /** 眼镜发送: 状态同步 */
     const val KEY_GLASS_STATUS = "glass_status"
@@ -21,6 +24,9 @@ object MessageProtocol {
     
     /** 手机发送: 识别结果 */
     const val KEY_PHONE_RESULT = "phone_result"
+    
+    /** 手机发送: 人脸模板同步（端侧识别所需） */
+    const val KEY_PHONE_TEMPLATE_SYNC = "phone_template_sync"
     
     /** 手机发送: 参数配置 */
     const val KEY_PHONE_CONFIG = "phone_config"
@@ -50,6 +56,7 @@ object MessageProtocol {
     const val FIELD_CLASS_NAME = "className"
     const val FIELD_TAGS = "tags"
     const val FIELD_IS_KNOWN = "isKnown"
+    const val FIELD_SOURCE = "source"
     
     // 状态同步字段
     const val FIELD_BATTERY = "battery"
@@ -64,6 +71,15 @@ object MessageProtocol {
     // 配对码字段
     const val FIELD_PAIRING_CODE = "pairingCode"
     const val FIELD_DEVICE_NAME = "deviceName"
+    
+    // 模板同步字段
+    const val FIELD_SYNC_ID = "syncId"
+    const val FIELD_CHUNK_INDEX = "chunkIndex"
+    const val FIELD_TOTAL_CHUNKS = "totalChunks"
+    const val FIELD_CHUNK_PAYLOAD = "chunkPayload"
+    const val FIELD_TEMPLATE_COUNT = "templateCount"
+    const val FIELD_MODEL_ID = "modelId"
+    const val FIELD_EMBEDDING_DIM = "embeddingDim"
 }
 
 /**
@@ -76,6 +92,7 @@ data class RecognitionResult(
     val confidence: Float,
     val tags: List<String>,
     val isKnown: Boolean,
+    val source: String = "edge",
     val timestamp: Long = System.currentTimeMillis()
 )
 

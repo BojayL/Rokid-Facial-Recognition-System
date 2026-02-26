@@ -76,6 +76,9 @@ dependencies {
     implementation(libs.camera.view)
     implementation(libs.camera.video)
     
+    // BlazeFace (ML Kit Face Detection backend)
+    implementation("com.google.mlkit:face-detection:16.1.7")
+    
     // Rokid 眼镜端 SDK
     implementation("com.rokid.cxr:cxr-service-bridge:1.0-20250519.061355-45")
     

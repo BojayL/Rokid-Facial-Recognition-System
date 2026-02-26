@@ -12,10 +12,12 @@ find_package(OpenCV REQUIRED core imgproc)
 set(ncnn_DIR ${CMAKE_SOURCE_DIR}/ncnn-20250503-android-vulkan/${ANDROID_ABI}/lib/cmake/ncnn)
 find_package(ncnn REQUIRED)
 
-# Source files (only SCRFD, no MobileFaceNet)
+# Source files
 add_library(scrfd_glasses_jni SHARED
     scrfd_jni.cpp
     scrfd.cpp
+    mobilefacenet.cpp
+    face_recognition_jni.cpp
 )
 
 # Include directories

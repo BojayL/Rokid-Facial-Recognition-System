@@ -6,8 +6,8 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import com.sustech.bojayL.data.model.Student
 import com.sustech.bojayL.ml.FaceAlignment
-import com.sustech.bojayL.ml.FaceRecognizer
 import com.sustech.bojayL.ml.InsightfaceNcnnDetector
+import com.sustech.bojayL.ml.SnpeFaceNetRecognizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -140,13 +140,15 @@ object LfwImporter {
             // 初始化检测器和识别器
             emit(ImportProgress(0, manifest.total_persons, "", ImportStatus.INITIALIZING, "正在初始化人脸检测器..."))
             
-            withContext(Dispatchers.IO) {
+            val snpeReady = withContext(Dispatchers.IO) {
                 if (!InsightfaceNcnnDetector.isReady()) {
                     InsightfaceNcnnDetector.init(context)
                 }
-                if (!FaceRecognizer.isReady()) {
-                    FaceRecognizer.init(context)
-                }
+                SnpeFaceNetRecognizer.init(context)
+            }
+            if (!snpeReady) {
+                emit(ImportProgress(0, 0, "", ImportStatus.FAILED, "SNPE 未就绪，无法生成 256 维模板"))
+                return@flow
             }
             
             val students = mutableListOf<Student>()
@@ -255,6 +257,9 @@ object LfwImporter {
             avatarUrl = "file://$primaryImagePath",
             photoUrl = "file://$primaryImagePath",
             faceFeature = faceFeature,
+            faceFeatureDim = faceFeature?.size,
+            faceFeatureModel = if (faceFeature != null) SnpeFaceNetRecognizer.MODEL_ID else null,
+            faceFeatureUpdatedAt = if (faceFeature != null) System.currentTimeMillis() else null,
             isEnrolled = faceFeature != null,  // 有特征才算已录入
             tags = listOf("LFW测试数据")
         )
@@ -299,10 +304,14 @@ object LfwImporter {
             }
             
             // 提取特征
-            val feature = FaceRecognizer.extractFeature(alignedFace)
+            val feature = SnpeFaceNetRecognizer.extractFeature(alignedFace)
             alignedFace.recycle()
-            
-            feature?.toList()
+
+            if (feature != null && feature.size == SnpeFaceNetRecognizer.OUTPUT_DIM) {
+                feature.toList()
+            } else {
+                null
+            }
             
         } catch (e: Exception) {
             Log.e(TAG, "Error extracting feature from ${imageFile.name}", e)
@@ -336,8 +345,14 @@ object LfwImporter {
             if (!InsightfaceNcnnDetector.isReady()) {
                 InsightfaceNcnnDetector.init(context)
             }
-            if (!FaceRecognizer.isReady()) {
-                FaceRecognizer.init(context)
+            if (!SnpeFaceNetRecognizer.init(context)) {
+                return@withContext ImportResult(
+                    success = false,
+                    students = emptyList(),
+                    successCount = 0,
+                    failedCount = 0,
+                    message = "SNPE 未就绪，无法生成 256 维模板"
+                )
             }
             
             for (person in manifest.persons) {

@@ -1,391 +1,172 @@
 package com.sustech.bojayL.glasses.communication
 
 import android.os.Build
-import android.util.Base64
 import android.util.Log
 import com.rokid.cxr.CXRServiceBridge
 import com.rokid.cxr.Caps
+import com.sustech.bojayL.glasses.ml.FaceTemplate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.random.Random
 
 /**
  * 眼镜端通信桥接器
- * 
- * 封装 CXRServiceBridge，提供与手机端的通信能力
- * 包括配对码生成和验证功能
+ *
+ * 新链路：
+ * - 手机 -> 眼镜：参数配置 + 模板同步
+ * - 眼镜 -> 手机：端侧识别结果 + 状态
  */
 class GlassesBridge {
-    
+
     companion object {
         private const val TAG = "GlassesBridge"
         private const val PAIRING_CODE_LENGTH = 6
     }
-    
+
     private val cxrServiceBridge = CXRServiceBridge()
-    
-    // 是否已订阅消息（防止重复订阅导致回调失效）
+
     @Volatile
     private var isSubscribed = false
-    
-    // 连接状态
+
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
-    
-    // 配对状态
+
     private val _isPaired = MutableStateFlow(false)
     val isPaired: StateFlow<Boolean> = _isPaired.asStateFlow()
-    
-    // 配对码
+
     private val _pairingCode = MutableStateFlow(generatePairingCode())
     val pairingCode: StateFlow<String> = _pairingCode.asStateFlow()
-    
-    // 最新识别结果
+
     private val _recognitionResult = MutableStateFlow<RecognitionResult?>(null)
     val recognitionResult: StateFlow<RecognitionResult?> = _recognitionResult.asStateFlow()
-    
-    // 配置参数
+
     private val _config = MutableStateFlow(GlassesConfig())
     val config: StateFlow<GlassesConfig> = _config.asStateFlow()
-    
-    // 连接状态监听
+
+    private val _faceTemplates = MutableStateFlow<List<FaceTemplate>>(emptyList())
+    val faceTemplates: StateFlow<List<FaceTemplate>> = _faceTemplates.asStateFlow()
+
+    private val pendingTemplateChunks = mutableMapOf<String, MutableMap<Int, String>>()
+    private val expectedChunkCounts = mutableMapOf<String, Int>()
+
     private val statusListener = object : CXRServiceBridge.StatusListener {
         override fun onConnected(uuid: String?, type: Int) {
-            Log.d(TAG, "Connected: uuid=$uuid, type=$type")
-            // 连接成功后设置状态
+            Log.d(TAG, "Connected: uuid=$uuid type=$type")
             _isConnected.value = true
-            // 连接后直接设为已配对，无需配对码验证
             _isPaired.value = true
-            Log.d(TAG, "Auto-paired on connection, isConnected=${_isConnected.value}, isPaired=${_isPaired.value}")
-            
-            // 连接成功后再次订阅消息，确保回调生效
-            // SDK 可能需要在连接后重新注册回调
             subscribePhoneMessages()
         }
-        
+
         override fun onDisconnected() {
             Log.d(TAG, "Disconnected")
-            // 断开连接时重置状态
             _isConnected.value = false
             _isPaired.value = false
-            // 清除识别结果
             _recognitionResult.value = null
-            // 重置订阅状态，方便重新连接时再次订阅
             isSubscribed = false
-            Log.d(TAG, "States reset: isConnected=${_isConnected.value}, isPaired=${_isPaired.value}, isSubscribed=$isSubscribed")
         }
-        
-        override fun onARTCStatus(p0: Float, p1: Boolean) {
-            // 暂不使用
-        }
+
+        override fun onARTCStatus(p0: Float, p1: Boolean) = Unit
     }
-    
-    
-    // 消息回调
+
     private val msgCallback = object : CXRServiceBridge.MsgCallback {
         override fun onReceive(name: String?, args: Caps?, bytes: ByteArray?) {
-            Log.d(TAG, "===== Received message from phone =====")
-            Log.d(TAG, "name='$name', args size=${args?.size() ?: 0}, bytes size=${bytes?.size ?: 0}")
-            
-            // 由于手机端使用 rk_custom_key 发送，name 可能是 rk_custom_key
-            // 我们需要尝试解析 args 中的内容来确定消息类型
+            if (args == null) return
+            Log.d(TAG, "Received message: name=$name size=${args.size()}")
             when (name) {
-                MessageProtocol.KEY_PHONE_RESULT -> {
-                    Log.d(TAG, "Matched KEY_PHONE_RESULT, parsing recognition result...")
-                    args?.let { parseRecognitionResult(it) }
-                }
-                MessageProtocol.KEY_PHONE_CONFIG -> {
-                    Log.d(TAG, "Matched KEY_PHONE_CONFIG, parsing config...")
-                    args?.let { parseConfig(it) }
-                }
-                MessageProtocol.KEY_PHONE_VERIFY_CODE -> {
-                    Log.d(TAG, "Matched KEY_PHONE_VERIFY_CODE, verifying...")
-                    args?.let { verifyPairingCode(it) }
-                }
-                MessageProtocol.KEY_SUBSCRIBE_PHONE, "rk_custom_key" -> {
-                    // 手机端发送的消息可能使用 rk_custom_key 作为 name
-                    // 尝试解析为识别结果
-                    Log.d(TAG, "Received rk_custom_key message, trying to parse as recognition result...")
-                    args?.let { parseRecognitionResult(it) }
-                }
-                else -> {
-                    // 尝试解析任何消息为识别结果
-                    Log.w(TAG, "Unknown message name: '$name', trying to parse as recognition result anyway...")
-                    args?.let { 
-                        try {
-                            parseRecognitionResult(it)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to parse as recognition result", e)
-                        }
-                    }
-                }
+                MessageProtocol.KEY_PHONE_CONFIG -> parseConfig(args)
+                MessageProtocol.KEY_PHONE_TEMPLATE_SYNC -> parseTemplateSync(args)
+                MessageProtocol.KEY_PHONE_RESULT -> parseRecognitionResult(args) // 兼容旧版
+                MessageProtocol.KEY_PHONE_VERIFY_CODE -> verifyPairingCode(args)
+                MessageProtocol.KEY_SUBSCRIBE_PHONE,
+                "rk_custom_key" -> parseBestEffort(args)
+                else -> parseBestEffort(args)
             }
         }
     }
-    
-    /**
-     * 初始化通信桥接
-     */
+
     fun init() {
-        Log.d(TAG, "Initializing GlassesBridge")
-        
-        // 重置状态确保干净的初始状态
         _isConnected.value = false
         _isPaired.value = false
         _recognitionResult.value = null
-        isSubscribed = false  // 重置订阅状态
-        
+        isSubscribed = false
+
         cxrServiceBridge.setStatusListener(statusListener)
-        
-        // 根据 SDK demo，在 init 中直接订阅消息（与 onConnected 中订阅相比更可靠）
         subscribePhoneMessages()
-        
-        Log.d(TAG, "GlassesBridge initialized, subscribed to messages, waiting for connection")
+        Log.d(TAG, "Bridge initialized")
     }
-    
-    /**
-     * 订阅手机端消息
-     * 
-     * 注意：必须在连接建立后调用才能生效
-     * 重复订阅会导致回调失效，所以只能订阅一次
-     */
+
     private fun subscribePhoneMessages() {
-        if (isSubscribed) {
-            Log.w(TAG, "Already subscribed, ignoring duplicate subscription request")
-            return
-        }
-        
+        if (isSubscribed) return
         val result = cxrServiceBridge.subscribe(MessageProtocol.KEY_SUBSCRIBE_PHONE, msgCallback)
-        Log.d(TAG, "Subscribe to phone messages: key=${MessageProtocol.KEY_SUBSCRIBE_PHONE}, result=$result")
-        
-        if (result != 0) {
-            Log.e(TAG, "Failed to subscribe! error code=$result")
-        } else {
-            Log.d(TAG, "Successfully subscribed to phone messages")
+        if (result == 0) {
             isSubscribed = true
+            Log.d(TAG, "Subscribed to ${MessageProtocol.KEY_SUBSCRIBE_PHONE}")
+        } else {
+            Log.e(TAG, "Subscribe failed: $result")
         }
     }
-    
-    /**
-     * 生成配对码
-     */
-    private fun generatePairingCode(): String {
-        return (1..PAIRING_CODE_LENGTH)
-            .map { Random.nextInt(0, 10) }
-            .joinToString("")
-    }
-    
-    /**
-     * 重新生成配对码
-     */
+
     fun regeneratePairingCode() {
         _pairingCode.value = generatePairingCode()
         _isPaired.value = false
-        Log.d(TAG, "Generated new pairing code: ${_pairingCode.value}")
     }
-    
-    /**
-     * 广播配对码
-     * 连接后周期性发送，让手机端知道配对码
-     */
+
     fun broadcastPairingCode() {
-        if (!_isConnected.value) {
-            Log.w(TAG, "Not connected, cannot broadcast pairing code")
-            return
-        }
-        
-        val deviceName = Build.MODEL
-        
+        if (!_isConnected.value) return
         val caps = Caps().apply {
             write(_pairingCode.value)
-            write(deviceName)
-        }
-        
-        val result = cxrServiceBridge.sendMessage(MessageProtocol.KEY_GLASS_PAIRING_CODE, caps)
-        Log.d(TAG, "Broadcast pairing code: ${_pairingCode.value}, result=$result")
-    }
-    
-    /**
-     * 验证配对码
-     */
-    private fun verifyPairingCode(caps: Caps) {
-        try {
-            val receivedCode = caps.at(0).string
-            Log.d(TAG, "Verifying pairing code: received=$receivedCode, expected=${_pairingCode.value}")
-            
-            if (receivedCode == _pairingCode.value) {
-                _isPaired.value = true
-                sendPairingConfirmation(true)
-                Log.d(TAG, "Pairing code verified successfully!")
-            } else {
-                sendPairingConfirmation(false)
-                Log.w(TAG, "Pairing code mismatch")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to verify pairing code", e)
-        }
-    }
-    
-    /**
-     * 发送配对确认
-     */
-    private fun sendPairingConfirmation(success: Boolean) {
-        val caps = Caps().apply {
-            writeInt32(if (success) 1 else 0)
             write(Build.MODEL)
         }
-        
-        cxrServiceBridge.sendMessage(MessageProtocol.KEY_PAIRING_CONFIRMED, caps)
+        cxrServiceBridge.sendMessage(MessageProtocol.KEY_GLASS_PAIRING_CODE, caps)
     }
-    
-    /**
-     * 发送识别请求
-     * 
-     * @param imageData 图片数据 (JPEG)
-     * @param landmarks 人脸关键点 [x1,y1,...,x5,y5]，如果是全图则为 null
-     */
-    fun sendRecognitionRequest(imageData: ByteArray, landmarks: FloatArray? = null) {
-        Log.d(TAG, "sendRecognitionRequest called, imageData size=${imageData.size}, " +
-                "hasLandmarks=${landmarks != null}, isConnected=${_isConnected.value}")
-        
-        if (!_isConnected.value) {
-            Log.w(TAG, "Not connected, cannot send recognition request")
-            return
-        }
-        
-        try {
-            // Base64 编码图片
-            val base64Image = Base64.encodeToString(imageData, Base64.NO_WRAP)
-            Log.d(TAG, "Base64 encoded image size: ${base64Image.length} chars")
-            
-            val caps = Caps().apply {
-                // 图片 Base64 编码
-                write(base64Image)
-                // 时间戳（使用 Int64）
-                writeInt64(System.currentTimeMillis())
-                // 是否有关键点（1=有，0=无/全图）
-                writeInt32(if (landmarks != null) 1 else 0)
-                // 关键点坐标（如果有）
-                if (landmarks != null && landmarks.size == 10) {
-                    for (value in landmarks) {
-                        writeInt32(java.lang.Float.floatToIntBits(value))
-                    }
-                }
-            }
-            
-            val result = cxrServiceBridge.sendMessage(MessageProtocol.KEY_GLASS_RECOGNIZE, caps)
-            Log.d(TAG, "sendMessage result: $result (key=${MessageProtocol.KEY_GLASS_RECOGNIZE})")
-            
-            if (result != 0) {
-                Log.e(TAG, "Failed to send message! result=$result")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Exception in sendRecognitionRequest", e)
-        }
-    }
-    
-    /**
-     * 发送状态同步
-     */
+
     fun sendStatusSync(battery: Int, mode: String) {
         val caps = Caps().apply {
             writeInt32(battery)
             write(mode)
             write(_isConnected.value)
         }
-        
-        val result = cxrServiceBridge.sendMessage(MessageProtocol.KEY_GLASS_STATUS, caps)
-        Log.d(TAG, "Sent status sync, result=$result")
+        cxrServiceBridge.sendMessage(MessageProtocol.KEY_GLASS_STATUS, caps)
     }
-    
+
     /**
-     * 解析识别结果
-     * 
-     * 注意：confidence 是通过 floatToIntBits 编码的，需要用 intBitsToFloat 解码
+     * 眼镜端识别结果上报（端侧识别）。
      */
-    private fun parseRecognitionResult(caps: Caps) {
-        try {
-            val isKnown = caps.at(0).int == 1
-            val studentId = if (caps.size() > 1) caps.at(1).string else null
-            val studentName = if (caps.size() > 2) caps.at(2).string else null
-            val className = if (caps.size() > 3) caps.at(3).string else null
-            // confidence 是通过 floatToIntBits 编码的
-            val confidenceInt = if (caps.size() > 4) caps.at(4).int else 0
-            val confidence = java.lang.Float.intBitsToFloat(confidenceInt)
-            
-            // 解析标签
-            val tags = mutableListOf<String>()
-            if (caps.size() > 5) {
-                val tagsStr = caps.at(5).string
-                if (!tagsStr.isNullOrEmpty()) {
-                    tags.addAll(tagsStr.split(","))
-                }
-            }
-            
-            _recognitionResult.value = RecognitionResult(
-                studentId = studentId,
-                studentName = studentName,
-                className = className,
-                confidence = confidence,
-                tags = tags,
-                isKnown = isKnown
-            )
-            
-            Log.d(TAG, "Parsed result: isKnown=$isKnown, name=$studentName, confidence=$confidence")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse recognition result", e)
+    fun sendEdgeRecognitionResult(result: RecognitionResult) {
+        if (!_isConnected.value) {
+            Log.w(TAG, "Not connected, skip result upload")
+            return
         }
-    }
-    
-    /**
-     * 解析配置参数
-     * 
-     * 注意：threshold 是通过 floatToIntBits 编码的
-     */
-    private fun parseConfig(caps: Caps) {
-        try {
-            // threshold 是通过 floatToIntBits 编码的
-            val thresholdInt = if (caps.size() > 0) caps.at(0).int else java.lang.Float.floatToIntBits(0.7f)
-            val threshold = java.lang.Float.intBitsToFloat(thresholdInt)
-            val interval = if (caps.size() > 1) caps.at(1).int.toLong() else 2000L
-            val brightness = if (caps.size() > 2) caps.at(2).int else 80
-            // showReticle: 1=显示, 0=隐藏
-            val showReticle = if (caps.size() > 3) caps.at(3).int == 1 else true
-            
-            _config.value = GlassesConfig(
-                recognitionThreshold = threshold,
-                captureIntervalMs = interval,
-                displayBrightness = brightness,
-                showReticle = showReticle
-            )
-            
-            Log.d(TAG, "Parsed config: threshold=$threshold, interval=$interval, showReticle=$showReticle")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse config", e)
+        val caps = Caps().apply {
+            writeInt32(if (result.isKnown) 1 else 0)
+            write(result.studentId ?: "")
+            write(result.studentName ?: "")
+            write(result.className ?: "")
+            writeInt32(java.lang.Float.floatToIntBits(result.confidence))
+            write(result.tags.joinToString(","))
+            writeInt64(result.timestamp)
+            write(result.source)
         }
+
+        val code = cxrServiceBridge.sendMessage(MessageProtocol.KEY_GLASS_RESULT, caps)
+        Log.d(TAG, "Send edge result code=$code known=${result.isKnown} name=${result.studentName}")
     }
-    
-    /**
-     * 清除当前识别结果
-     */
+
     fun clearResult() {
         _recognitionResult.value = null
     }
-    
-    /**
-     * 释放资源
-     */
+
     fun release() {
-        Log.d(TAG, "Releasing GlassesBridge")
         cxrServiceBridge.setStatusListener(null)
         _isPaired.value = false
-        isSubscribed = false  // 重置订阅状态，下次连接时可以重新订阅
+        isSubscribed = false
+        pendingTemplateChunks.clear()
+        expectedChunkCounts.clear()
     }
-    
-    /**
-     * 获取配对状态摘要
-     */
+
     fun getPairingStatus(): PairingStatus {
         return PairingStatus(
             code = _pairingCode.value,
@@ -394,11 +175,179 @@ class GlassesBridge {
             deviceName = Build.MODEL
         )
     }
+
+    private fun parseBestEffort(caps: Caps) {
+        try {
+            if (caps.size() >= 4) {
+                // 优先按模板分片解析
+                val possibleSyncId = caps.at(0).string
+                val possibleChunk = caps.at(1).int
+                val possibleTotal = caps.at(2).int
+                val possiblePayload = caps.at(3).string
+                if (!possibleSyncId.isNullOrEmpty() &&
+                    possibleChunk >= 0 &&
+                    possibleTotal > 0 &&
+                    !possiblePayload.isNullOrEmpty()
+                ) {
+                    parseTemplateSync(caps)
+                    return
+                }
+            }
+        } catch (_: Exception) {
+            // ignore and continue
+        }
+
+        try {
+            parseRecognitionResult(caps)
+        } catch (_: Exception) {
+            // ignore
+        }
+    }
+
+    private fun parseRecognitionResult(caps: Caps) {
+        try {
+            val isKnown = caps.at(0).int == 1
+            val studentId = if (caps.size() > 1) caps.at(1).string else null
+            val studentName = if (caps.size() > 2) caps.at(2).string else null
+            val className = if (caps.size() > 3) caps.at(3).string else null
+            val confidenceBits = if (caps.size() > 4) caps.at(4).int else 0
+            val confidence = java.lang.Float.intBitsToFloat(confidenceBits)
+            val tags = if (caps.size() > 5) {
+                caps.at(5).string?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+            } else {
+                emptyList()
+            }
+            val timestamp = if (caps.size() > 6) caps.at(6).long else System.currentTimeMillis()
+            val source = if (caps.size() > 7) caps.at(7).string ?: "phone" else "phone"
+
+            _recognitionResult.value = RecognitionResult(
+                studentId = studentId,
+                studentName = studentName,
+                className = className,
+                confidence = confidence,
+                tags = tags,
+                isKnown = isKnown,
+                source = source,
+                timestamp = timestamp
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Parse recognition result failed", e)
+        }
+    }
+
+    private fun parseTemplateSync(caps: Caps) {
+        try {
+            val syncId = caps.at(0).string ?: return
+            val chunkIndex = caps.at(1).int
+            val totalChunks = caps.at(2).int
+            val payload = caps.at(3).string ?: return
+            val templateCount = if (caps.size() > 4) caps.at(4).int else -1
+
+            val chunkMap = pendingTemplateChunks.getOrPut(syncId) { mutableMapOf() }
+            chunkMap[chunkIndex] = payload
+            expectedChunkCounts[syncId] = totalChunks
+
+            Log.d(TAG, "Template chunk: syncId=$syncId $chunkIndex/$totalChunks")
+
+            if (chunkMap.size >= totalChunks) {
+                val combined = StringBuilder()
+                for (i in 0 until totalChunks) {
+                    combined.append(chunkMap[i] ?: "")
+                }
+                val templates = parseTemplatePayload(combined.toString())
+                _faceTemplates.value = templates
+                Log.i(
+                    TAG,
+                    "Template sync completed: syncId=$syncId parsed=${templates.size} expected=$templateCount"
+                )
+                pendingTemplateChunks.remove(syncId)
+                expectedChunkCounts.remove(syncId)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse template sync", e)
+        }
+    }
+
+    private fun parseTemplatePayload(json: String): List<FaceTemplate> {
+        val root = JSONObject(json)
+        val rootDim = root.optInt("embeddingDim", 256)
+        val rootModelId = root.optString("modelId", "").ifBlank { null }
+        val templates = root.optJSONArray("templates") ?: JSONArray()
+        val result = ArrayList<FaceTemplate>(templates.length())
+        for (i in 0 until templates.length()) {
+            val obj = templates.optJSONObject(i) ?: continue
+            val studentId = obj.optString("studentId", "")
+            if (studentId.isBlank()) continue
+            val studentName = obj.optString("studentName", "")
+            val className = obj.optString("className", "")
+            val tagsArray = obj.optJSONArray("tags") ?: JSONArray()
+            val tags = mutableListOf<String>()
+            for (t in 0 until tagsArray.length()) {
+                tags += tagsArray.optString(t, "")
+            }
+            val embArray = obj.optJSONArray("embedding") ?: JSONArray()
+            val embedding = FloatArray(embArray.length()) { idx ->
+                embArray.optDouble(idx, 0.0).toFloat()
+            }
+            val dim = obj.optInt("embeddingDim", rootDim)
+            val modelId = obj.optString("modelId", rootModelId ?: "").ifBlank { rootModelId }
+            if (dim != 256 || embedding.size != 256) {
+                Log.w(TAG, "Skip template $studentId due to dim mismatch: dim=$dim size=${embedding.size}")
+                continue
+            }
+            result += FaceTemplate(
+                studentId = studentId,
+                studentName = studentName,
+                className = className,
+                tags = tags,
+                modelId = modelId,
+                embedding = embedding
+            )
+        }
+        return result
+    }
+
+    private fun parseConfig(caps: Caps) {
+        try {
+            val thresholdBits = if (caps.size() > 0) caps.at(0).int else java.lang.Float.floatToIntBits(0.7f)
+            val threshold = java.lang.Float.intBitsToFloat(thresholdBits)
+            val interval = if (caps.size() > 1) caps.at(1).int.toLong() else 2000L
+            val brightness = if (caps.size() > 2) caps.at(2).int else 80
+            val showReticle = if (caps.size() > 3) caps.at(3).int == 1 else true
+            _config.value = GlassesConfig(
+                recognitionThreshold = threshold,
+                captureIntervalMs = interval,
+                displayBrightness = brightness,
+                showReticle = showReticle
+            )
+            Log.d(TAG, "Config updated: threshold=$threshold interval=$interval showReticle=$showReticle")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse config", e)
+        }
+    }
+
+    private fun verifyPairingCode(caps: Caps) {
+        try {
+            val receivedCode = caps.at(0).string
+            val success = receivedCode == _pairingCode.value
+            _isPaired.value = success
+            val resp = Caps().apply {
+                writeInt32(if (success) 1 else 0)
+                write(Build.MODEL)
+            }
+            cxrServiceBridge.sendMessage(MessageProtocol.KEY_PAIRING_CONFIRMED, resp)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to verify pairing code", e)
+        }
+    }
+
+    private fun generatePairingCode(): String {
+        return (1..PAIRING_CODE_LENGTH)
+            .map { Random.nextInt(0, 10) }
+            .joinToString("")
+    }
 }
 
-/**
- * 配对状态
- */
 data class PairingStatus(
     val code: String,
     val isPaired: Boolean,
@@ -406,12 +355,9 @@ data class PairingStatus(
     val deviceName: String
 )
 
-/**
- * 眼镜配置参数
- */
 data class GlassesConfig(
     val recognitionThreshold: Float = 0.7f,
     val captureIntervalMs: Long = 2000L,
     val displayBrightness: Int = 80,
-    val showReticle: Boolean = true  // 是否显示准心
+    val showReticle: Boolean = true
 )

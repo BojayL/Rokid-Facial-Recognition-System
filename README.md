@@ -19,14 +19,14 @@ FReg 是一款专为 Rokid AR 眼镜设计的智慧课堂解决方案，通过�
 
 | 应用 | 运行设备 | 主要功能 |
 |------|----------|----------|
-| **m-app** | 手机 | 人脸录入、学生管理、识别处理、数据存储 |
-| **s-app** | Rokid AR 眼镜 | 图像采集、AR 界面展示、手势交互 |
+| **m-app** | 手机 | 人脸录入、学生管理、模板同步、参数下发、结果展示 |
+| **s-app** | Rokid AR 眼镜 | 图像采集、端侧识别、AR 界面展示、手势交互 |
 
 ## 功能特性
 
 ### 🎯 核心功能
 
-- **实时人脸识别** - 基于 SCRFD + MobileFaceNet 的高精度人脸检测与识别
+- **实时端侧人脸识别** - 眼镜端执行 BlazeFace + FaceNet-MobileNetV2(256d)
 - **AR HUD 显示** - 在眼镜端实时叠加显示识别结果
 - **学生管理** - 完整的学生信息与人脸特征库管理
 - **自动考勤** - 识别结果自动记录为考勤数据
@@ -50,41 +50,42 @@ FReg 是一款专为 Rokid AR 眼镜设计的智慧课堂解决方案，通过�
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          m-app (手机)                           │
-│  ┌──────────┐    ┌───────────────┐    ┌──────────────────────┐ │
-│  │ CameraX  │───▶│ ML Pipeline   │───▶│ RokidManager         │ │
-│  │ /眼镜    │    │ (SCRFD +      │    │ (BLE + Rokid SDK)    │ │
-│  │ 图像     │    │  MobileFaceNet)│   └──────────┬───────────┘ │
-│  └──────────┘    └───────────────┘               │             │
-└──────────────────────────────────────────────────┼─────────────┘
-                                                   │ 识别结果
+│  ┌───────────────┐    ┌──────────────────────┐                 │
+│  │ StudentRepository│──▶ RokidMessageHandler │                 │
+│  │ (人脸模板库)      │    │ (模板同步/参数下发) │                 │
+│  └───────────────┘    └──────────┬───────────┘                 │
+└──────────────────────────────────┼──────────────────────────────┘
+                                   │ 模板/配置
                                                    ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        s-app (眼镜)                             │
-│  ┌──────────────┐    ┌──────────────┐    ┌─────────────────┐   │
-│  │ GlassesBridge│───▶│ HudViewModel │───▶│ HudScreen       │   │
-│  │ (Socket)     │    │              │    │ (AR Overlay)    │   │
-│  └──────────────┘    └──────────────┘    └─────────────────┘   │
+│  CameraX → BlazeFace → FaceAlign(112) → FaceNet-MBV2(256, INT8/SNPE) │
+│           ↓                                                 │    │
+│        Cosine Match (本地模板) ───────────────▶ HudScreen  │    │
+│           │                                                 │    │
+│           └────────────── glass_result ─────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### ML Pipeline
 
 ```
-图像输入
+眼镜图像输入
     ↓
-[CompositeFaceDetector]
-    ├─ InsightfaceNcnnDetector (主: SCRFD via NCNN)
-    └─ FaceDetectorMlKit       (备: Google MLKit)
+[BlazeFaceDetector]
+    │  主路径: ML Kit BlazeFace
+    │  回退: SCRFD (NCNN)
     ↓
-[FaceAlignment]
+[FaceAligner]
     │  5点关键点 → 112x112 对齐人脸
     ↓
-[FaceRecognizer]
-    │  MobileFaceNet NCNN → 512维特征向量
+[FaceNet-MobileNetV2]
+    │  主路径: SNPE INT8 → 256维特征
+    │  回退: MobileFaceNet NCNN → 规整到256维
     ↓
 余弦相似度匹配 (阈值: 0.7)
     ↓
-学生匹配 → RokidService → 眼镜 HUD
+端侧结果显示 + 上报手机端
 ```
 
 ## 快速开始
@@ -114,7 +115,12 @@ cd m-app
 - `mobilefacenet-opt.param`
 - `mobilefacenet-opt.bin`
 
-> SCRFD 模型已包含在仓库中
+并放置 SNPE INT8 DLC（用于 256 维模板与端侧主链路）到两个端：
+- `m-app/app/src/main/assets/facenet_mobilenetv2_256_int8.dlc`
+- `s-app/app/src/main/assets/facenet_mobilenetv2_256_int8.dlc`
+
+> SCRFD 与 NCNN MobileFaceNet 回退模型已包含在仓库中。
+> 模板同步现已严格校验：仅 `FaceNet-MobileNetV2 256d + SNPE` 模型模板会下发到眼镜端。
 
 ### 3. 配置 Rokid SDK
 
@@ -237,10 +243,10 @@ adb logcat | grep -E "(Received message|Sent.*result)"
 
 | Key | 方向 | 描述 |
 |-----|------|------|
-| `glass_recognize` | 眼镜 → 手机 | 识别请求 (图像 + 人脸框) |
+| `glass_result` | 眼镜 → 手机 | 端侧识别结果 |
 | `glass_status` | 眼镜 → 手机 | 状态信息 (电量/模式) |
 | `glass_pairing_code` | 眼镜 → 手机 | 配对码 |
-| `phone_result` | 手机 → 眼镜 | 识别结果 |
+| `phone_template_sync` | 手机 → 眼镜 | 人脸模板分片同步 |
 | `phone_config` | 手机 → 眼镜 | 配置参数 |
 
 **注意:** Rokid SDK 缺少 `writeFloat()` 方法，需使用:
@@ -255,9 +261,9 @@ writeInt32(java.lang.Float.floatToIntBits(floatValue))
 | 语言 | Kotlin 2.0.21 |
 | UI | Jetpack Compose + Material 3 |
 | 相机 | CameraX 1.3.1 |
-| ML | NCNN (Vulkan) + MLKit |
-| 人脸检测 | SCRFD (InsightFace) |
-| 人脸识别 | MobileFaceNet |
+| ML | SNPE(INT8) + NCNN(Fallback) + MLKit BlazeFace |
+| 人脸检测 | BlazeFace (主) + SCRFD (回退) |
+| 人脸识别 | FaceNet-MobileNetV2 256d (主) |
 | 通信 | Rokid CxrApi SDK |
 | 存储 | DataStore + kotlinx.serialization |
 
@@ -278,6 +284,4 @@ writeInt32(java.lang.Float.floatToIntBits(floatValue))
 - [InsightFace](https://github.com/deepinsight/insightface) - SCRFD 人脸检测模型
 - [MobileFaceNet](https://github.com/AlfredXiangWu/MobileFaceNet) - 轻量级人脸识别模型
 - [Rokid](https://www.rokid.com/) - AR 眼镜硬件与 SDK
-
-
 

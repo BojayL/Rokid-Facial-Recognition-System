@@ -1,103 +1,87 @@
 package com.sustech.bojayL.glasses.viewmodel
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sustech.bojayL.glasses.camera.GlassesCamera
-import com.sustech.bojayL.glasses.communication.*
+import com.sustech.bojayL.glasses.communication.CaptureMode
+import com.sustech.bojayL.glasses.communication.FaceState
+import com.sustech.bojayL.glasses.communication.GlassesBridge
+import com.sustech.bojayL.glasses.communication.RecognitionResult
 import com.sustech.bojayL.glasses.input.KeyType
 import com.sustech.bojayL.glasses.input.SwipeDirection
+import com.sustech.bojayL.glasses.ml.EdgeFaceRecognitionEngine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * HUD 界面状态
- */
 data class HudUiState(
-    // 连接状态
     val isConnected: Boolean = false,
     val batteryLevel: Int = 80,
-    
-    // 配对状态（连接后自动配对）
     val isPaired: Boolean = false,
-    
-    // 识别状态
     val faceState: FaceState = FaceState.NONE,
     val recognitionResult: RecognitionResult? = null,
-    
-    // 统计信息
-    val recognizedCount: Int = 0,      // 本次会话已识别人数
-    val captureCount: Int = 0,         // 本次会话采集次数
-    
-    // 模式
+    val recognizedCount: Int = 0,
+    val captureCount: Int = 0,
     val captureMode: CaptureMode = CaptureMode.AUTO,
     val isRecording: Boolean = false,
-    
-    // 显示设置
-    val showReticle: Boolean = true,  // 是否显示准心
-    
-    // 提示消息
+    val showReticle: Boolean = true,
     val toastMessage: String? = null
 )
 
 /**
  * HUD ViewModel
- * 
- * 管理眼镜端 HUD 界面的所有状态
+ *
+ * 识别链路已迁移到眼镜端：
+ * Camera -> BlazeFace -> FaceAlign -> FaceNet(SNPE/NCNN fallback) -> Cosine Match
  */
 class HudViewModel : ViewModel() {
-    
+
     companion object {
         private const val TAG = "HudViewModel"
-        private const val RESULT_DISPLAY_DURATION = 3000L  // 识别结果显示时长
-        private const val TOAST_DISPLAY_DURATION = 2000L  // 提示消息显示时长
+        private const val RESULT_DISPLAY_DURATION = 3000L
+        private const val TOAST_DISPLAY_DURATION = 2000L
     }
-    
-    // 通信桥接器
+
     private val glassesBridge = GlassesBridge()
-    
-    // 相机管理器（需要通过 initCamera 初始化）
     private var glassesCamera: GlassesCamera? = null
-    
-    // 相机是否已初始化
+    private var edgeEngine: EdgeFaceRecognitionEngine? = null
+
     private val _isCameraInitialized = MutableStateFlow(false)
     val isCameraInitialized: StateFlow<Boolean> = _isCameraInitialized.asStateFlow()
-    
-    // UI 状态
+
     private val _uiState = MutableStateFlow(HudUiState())
     val uiState: StateFlow<HudUiState> = _uiState.asStateFlow()
-    
-    // 定时任务
+
     private var resultClearJob: Job? = null
     private var toastClearJob: Job? = null
-    
+    @Volatile
+    private var isFrameProcessing = false
+
+    private val recognizedStudentIds = mutableSetOf<String>()
+
     init {
         glassesBridge.init()
         observeBridgeState()
         observePairingState()
     }
-    
-    /**
-     * 监听通信桥接状态
-     */
+
     private fun observeBridgeState() {
-        // 监听连接状态
         viewModelScope.launch {
             glassesBridge.isConnected.collect { connected ->
                 _uiState.update { it.copy(isConnected = connected) }
-                if (connected) {
-                    showToast("已连接手机")
-                } else {
-                    showToast("连接已断开")
-                }
+                showToast(if (connected) "已连接手机" else "连接已断开")
             }
         }
-        
-        // 监听识别结果
+
+        // 兼容旧链路：若手机仍回传结果，HUD 仍可展示
         viewModelScope.launch {
             glassesBridge.recognitionResult.collect { result ->
                 if (result != null) {
@@ -105,24 +89,29 @@ class HudViewModel : ViewModel() {
                 }
             }
         }
-        
-        // 监听配置变更
+
         viewModelScope.launch {
             glassesBridge.config.collect { config ->
-                Log.d(TAG, "Config updated: showReticle=${config.showReticle}")
-                // 直接应用准心显示配置
-                val oldValue = _uiState.value.showReticle
+                val oldReticle = _uiState.value.showReticle
                 _uiState.update { it.copy(showReticle = config.showReticle) }
-                if (oldValue != config.showReticle) {
+                glassesCamera?.setCaptureInterval(config.captureIntervalMs)
+                edgeEngine?.setThreshold(config.recognitionThreshold)
+                if (oldReticle != config.showReticle) {
                     showToast(if (config.showReticle) "准心已开启" else "准心已关闭")
                 }
             }
         }
+
+        viewModelScope.launch {
+            glassesBridge.faceTemplates.collect { templates ->
+                edgeEngine?.updateTemplates(templates)
+                if (templates.isNotEmpty()) {
+                    showToast("模板已同步 ${templates.size} 人")
+                }
+            }
+        }
     }
-    
-    /**
-     * 监听配对状态（连接后自动配对）
-     */
+
     private fun observePairingState() {
         viewModelScope.launch {
             glassesBridge.isPaired.collect { paired ->
@@ -130,7 +119,6 @@ class HudViewModel : ViewModel() {
                 _uiState.update { it.copy(isPaired = paired) }
                 if (paired) {
                     showToast("已就绪")
-                    // 配对成功后自动开始采集（如果相机已初始化）
                     if (!wasPaired && _isCameraInitialized.value && !_uiState.value.isRecording) {
                         startCapture()
                     }
@@ -138,120 +126,83 @@ class HudViewModel : ViewModel() {
             }
         }
     }
-    
-    /**
-     * 处理识别结果
-     */
+
     private fun handleRecognitionResult(result: RecognitionResult) {
-        Log.d(TAG, "Received recognition result: ${result.studentName}, known=${result.isKnown}")
-        
         val newState = if (result.isKnown) FaceState.RECOGNIZED else FaceState.UNKNOWN
-        
+        val currentStudentId = result.studentId
+        val shouldIncreaseCount = result.isKnown &&
+                !currentStudentId.isNullOrBlank() &&
+                recognizedStudentIds.add(currentStudentId)
+
         _uiState.update {
             it.copy(
                 faceState = newState,
                 recognitionResult = result,
-                // 识别成功时增加计数
-                recognizedCount = if (result.isKnown) it.recognizedCount + 1 else it.recognizedCount
+                recognizedCount = if (shouldIncreaseCount) it.recognizedCount + 1 else it.recognizedCount
             )
         }
-        
-        // 设置自动清除定时器
+
         resultClearJob?.cancel()
         resultClearJob = viewModelScope.launch {
             delay(RESULT_DISPLAY_DURATION)
             clearRecognitionResult()
         }
     }
-    
-    /**
-     * 处理按键事件
-     */
+
     fun onKeyEvent(keyType: KeyType) {
-        Log.d(TAG, "Key event: $keyType")
-        
         when (keyType) {
             KeyType.CLICK -> {
-                // 单击：
-                // - 手动模式下触发识别
-                // - 自动模式下切换采集状态
                 if (_uiState.value.captureMode == CaptureMode.MANUAL) {
                     triggerCapture()
                 } else {
                     toggleCapture()
                 }
             }
-            KeyType.DOUBLE_CLICK -> {
-                // 双击：切换准心显示
-                toggleReticle()
-            }
-            KeyType.LONG_PRESS -> {
-                // 长按：切换模式
-                toggleCaptureMode()
-            }
-            KeyType.AI_START -> {
-                // AI按键：开始采集
-                startCapture()
-            }
-            else -> {}
+            KeyType.DOUBLE_CLICK -> toggleReticle()
+            KeyType.LONG_PRESS -> toggleCaptureMode()
+            KeyType.AI_START -> startCapture()
+            else -> Unit
         }
     }
-    
-    /**
-     * 切换采集状态
-     */
+
     private fun toggleCapture() {
-        if (_uiState.value.isRecording) {
-            stopCapture()
-        } else {
-            startCapture()
-        }
+        if (_uiState.value.isRecording) stopCapture() else startCapture()
     }
-    
-    /**
-     * 处理滑动事件
-     */
+
     fun onSwipe(direction: SwipeDirection) {
         Log.d(TAG, "Swipe: $direction")
-        // 可用于切换显示信息页等功能
     }
-    
-    /**
-     * 切换准心显示
-     */
+
     private fun toggleReticle() {
         val newValue = !_uiState.value.showReticle
         _uiState.update { it.copy(showReticle = newValue) }
         showToast(if (newValue) "准心已开启" else "准心已关闭")
     }
-    
-    /**
-     * 初始化相机和人脸检测器
-     * 
-     * @param context Android 上下文
-     * @param lifecycleOwner 生命周期所有者
-     */
+
     fun initCamera(context: Context, lifecycleOwner: LifecycleOwner) {
         if (glassesCamera != null) {
             Log.d(TAG, "Camera already initialized")
             return
         }
-        
-        Log.d(TAG, "Initializing camera and face detector...")
+
+        edgeEngine = EdgeFaceRecognitionEngine(context)
+        viewModelScope.launch {
+            val ok = edgeEngine?.initialize() == true
+            Log.i(TAG, "Edge engine initialized: $ok")
+        }
+
         glassesCamera = GlassesCamera(context).apply {
-            initialize(lifecycleOwner) { imageData, width, height, landmarks ->
-                onImageCaptured(imageData, width, height, landmarks)
+            initialize(lifecycleOwner) { bitmap ->
+                onFrameCaptured(bitmap)
             }
         }
-        
-        // 监听相机初始化状态
+
         viewModelScope.launch {
             glassesCamera?.isInitialized?.collect { initialized ->
                 val wasInitialized = _isCameraInitialized.value
                 _isCameraInitialized.value = initialized
                 if (initialized) {
                     showToast("相机已就绪")
-                    // 相机就绪后，如果已配对且未开始采集，自动开始
                     if (!wasInitialized && _uiState.value.isPaired && !_uiState.value.isRecording) {
                         startCapture()
                     }
@@ -259,160 +210,127 @@ class HudViewModel : ViewModel() {
             }
         }
     }
-    
-    /**
-     * 处理采集到的图像
-     * 
-     * @param imageData 图像数据（裁切后的人脸或降级全图）
-     * @param width 图像宽度
-     * @param height 图像高度
-     * @param landmarks 人脸关键点（如果检测到人脸），null 表示是降级全图
-     */
-    private fun onImageCaptured(imageData: ByteArray, width: Int, height: Int, landmarks: FloatArray?) {
-        Log.d(TAG, "Image captured: ${imageData.size} bytes, ${width}x${height}, " +
-                "hasLandmarks=${landmarks != null}")
-        
-        // 直接检查 glassesBridge 的连接状态（避免竞态条件）
-        if (!glassesBridge.isConnected.value) {
-            Log.w(TAG, "Not connected (bridge.isConnected=false), cannot send image")
+
+    private fun onFrameCaptured(frame: Bitmap) {
+        if (isFrameProcessing) {
+            recycleQuietly(frame)
             return
         }
-        
-        // 更新状态为识别中，增加采集计数
+        isFrameProcessing = true
+
         _uiState.update {
             it.copy(
                 faceState = FaceState.RECOGNIZING,
                 captureCount = it.captureCount + 1
             )
         }
-        
-        // 发送识别请求（包含关键点）
-        Log.d(TAG, "Sending recognition request to phone...")
-        glassesBridge.sendRecognitionRequest(imageData, landmarks)
+
+        viewModelScope.launch {
+            try {
+                val engine = edgeEngine
+                if (engine == null) {
+                    updateFaceDetectionState(false)
+                    return@launch
+                }
+
+                val result = engine.recognize(frame)
+                if (!result.faceDetected) {
+                    updateFaceDetectionState(false)
+                    return@launch
+                }
+
+                val recognition = result.recognition
+                if (recognition != null) {
+                    handleRecognitionResult(recognition)
+                    // 同步端侧结果到手机端 UI
+                    glassesBridge.sendEdgeRecognitionResult(recognition)
+                } else {
+                    updateFaceDetectionState(true)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Frame recognition failed", e)
+                updateFaceDetectionState(false)
+            } finally {
+                recycleQuietly(frame)
+                isFrameProcessing = false
+            }
+        }
     }
-    
-    /**
-     * 开始采集
-     */
+
     fun startCapture() {
-        val camera = glassesCamera
-        if (camera == null) {
+        val camera = glassesCamera ?: run {
             showToast("相机未初始化")
             return
         }
-        
         if (!_isCameraInitialized.value) {
             showToast("相机正在初始化...")
             return
         }
-        
-        // 根据当前模式设置相机
+
         camera.setAutoCapture(_uiState.value.captureMode == CaptureMode.AUTO)
         camera.startCapture()
-        
-        _uiState.update {
-            it.copy(isRecording = true)
-        }
-        
+        _uiState.update { it.copy(isRecording = true) }
         showToast(if (_uiState.value.captureMode == CaptureMode.AUTO) "自动采集已开始" else "手动采集模式")
     }
-    
-    /**
-     * 停止采集
-     */
+
     fun stopCapture() {
         glassesCamera?.stopCapture()
-        
-        _uiState.update {
-            it.copy(isRecording = false)
-        }
-        
+        _uiState.update { it.copy(isRecording = false) }
         showToast("采集已停止")
     }
-    
-    /**
-     * 触发手动抓拍（用于手动模式）
-     */
+
     fun triggerCapture() {
-        val camera = glassesCamera
-        if (camera == null) {
+        val camera = glassesCamera ?: run {
             showToast("相机未初始化")
             return
         }
-        
         if (!_isCameraInitialized.value) {
             showToast("相机正在初始化...")
             return
         }
-        
-        if (!_uiState.value.isConnected) {
-            showToast("未连接手机")
-            return
-        }
-        
-        // 手动触发一次采集
         camera.captureOnce()
         showToast("正在识别...")
     }
-    
-    /**
-     * 设置采集间隔
-     */
+
     fun setCaptureInterval(intervalMs: Long) {
         glassesCamera?.setCaptureInterval(intervalMs)
     }
-    
-    /**
-     * 更新人脸检测状态
-     */
+
     fun updateFaceDetectionState(detected: Boolean) {
         if (_uiState.value.faceState == FaceState.RECOGNIZED ||
-            _uiState.value.faceState == FaceState.UNKNOWN) {
-            return  // 保持识别结果显示
+            _uiState.value.faceState == FaceState.UNKNOWN
+        ) {
+            return
         }
-        
         _uiState.update {
             it.copy(faceState = if (detected) FaceState.DETECTING else FaceState.NONE)
         }
     }
-    
-    /**
-     * 切换采集模式
-     */
+
     private fun toggleCaptureMode() {
         val newMode = when (_uiState.value.captureMode) {
             CaptureMode.AUTO -> CaptureMode.MANUAL
             CaptureMode.MANUAL -> CaptureMode.AUTO
         }
-        
         _uiState.update { it.copy(captureMode = newMode) }
-        
-        // 更新相机模式
         glassesCamera?.setAutoCapture(newMode == CaptureMode.AUTO)
-        
         showToast(if (newMode == CaptureMode.AUTO) "自动采集模式" else "手动采集模式")
     }
-    
-    /**
-     * 重置状态
-     */
+
     fun resetState() {
         resultClearJob?.cancel()
         glassesBridge.clearResult()
-        
+        recognizedStudentIds.clear()
         _uiState.update {
             it.copy(
                 faceState = FaceState.NONE,
-                recognitionResult = null
+                recognitionResult = null,
+                recognizedCount = 0
             )
         }
-        
         showToast("已重置")
     }
-    
-    /**
-     * 清除识别结果
-     */
+
     private fun clearRecognitionResult() {
         glassesBridge.clearResult()
         _uiState.update {
@@ -422,51 +340,46 @@ class HudViewModel : ViewModel() {
             )
         }
     }
-    
-    /**
-     * 显示提示消息
-     */
+
     private fun showToast(message: String) {
         _uiState.update { it.copy(toastMessage = message) }
-        
         toastClearJob?.cancel()
         toastClearJob = viewModelScope.launch {
             delay(TOAST_DISPLAY_DURATION)
             _uiState.update { it.copy(toastMessage = null) }
         }
     }
-    
-    /**
-     * 更新录制状态
-     */
+
     fun setRecording(recording: Boolean) {
         _uiState.update { it.copy(isRecording = recording) }
     }
-    
-    /**
-     * 更新电量
-     */
+
     fun updateBattery(level: Int) {
         _uiState.update { it.copy(batteryLevel = level) }
     }
-    
-    /**
-     * 获取通信桥接器（供 Activity 使用）
-     */
+
     fun getBridge(): GlassesBridge = glassesBridge
-    
-    /**
-     * 释放相机资源
-     */
+
     fun releaseCamera() {
         glassesCamera?.release()
         glassesCamera = null
+        edgeEngine?.release()
+        edgeEngine = null
         _isCameraInitialized.value = false
     }
-    
+
     override fun onCleared() {
         super.onCleared()
         releaseCamera()
         glassesBridge.release()
+    }
+
+    private fun recycleQuietly(bitmap: Bitmap) {
+        try {
+            if (!bitmap.isRecycled) {
+                bitmap.recycle()
+            }
+        } catch (_: Exception) {
+        }
     }
 }
